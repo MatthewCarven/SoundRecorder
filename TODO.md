@@ -3,7 +3,8 @@
 See PLAN.md for the why.
 
 ## Matthew
-- [ ] `git init` this folder (and say whether it goes on GitHub, public or private). `.gitignore` is ready
+- [x] `git init` this folder (Phase 1 committed 2026-11-02, branch `master`)
+- [ ] Say whether it goes on GitHub, public or private (no remote yet)
 - [ ] After any `--probe` that includes the H2n: does it still sound right? Replug if your voice comes out deep
 
 ## Phase 1: devices (done 2026-11-02)
