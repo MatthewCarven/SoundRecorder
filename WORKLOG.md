@@ -169,5 +169,6 @@ endpoint in the middle. Counts frames only; no audio kept.
 So the H2n's ten-minute take couldn't be done over ASIO (driver) or WASAPI exclusive
 (PortAudio). Over WASAPI shared it's the path the Stereo Mix take already proved.
 The test left the H2n at 48 kHz: Matthew replugged it, and at 08:41 its capture
-read 44,098.1 frames/s again. Its playback endpoint is still at 48 kHz, so the
-trap stays armed until both endpoints are set to one rate.
+read 44,098.1 frames/s again. He then set its playback endpoint to 44.1 kHz 16-bit,
+matching the capture side. 08:45, `h2n_clock.py --play 44100`: alone 44,098.6,
+with silence playing 44,099.4, after 44,100.0. Cured, with no replug.

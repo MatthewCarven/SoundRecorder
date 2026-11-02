@@ -91,7 +91,8 @@ Each API tells a different story about the same hardware:
   stayed there after the playback stopped. **The cure is to give both endpoints
   the same rate**: Sound control panel, Playback, Speakers (ZOOM H and F Series
   Audio), Properties, Advanced, Default Format 44100 Hz (or set the recording side
-  to 48000 Hz). `scripts/h2n_clock.py --play 48000` shows the effect.
+  to 48000 Hz). `scripts/h2n_clock.py --play 48000` shows the effect. Done on this
+  laptop (both at 44.1 kHz); `--play 44100` then held 44,100 throughout.
 - **The H2n's ASIO driver loses over half the audio.** It hands over one 64-frame
   buffer every 3 ms (21,381 frames a second) at 44.1 and 48 kHz alike, with any
   block size; 64 frames is the only buffer size it offers. `rec` stops such a take

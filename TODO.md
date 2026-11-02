@@ -8,7 +8,7 @@ See PLAN.md for the why.
 - [x] Push: `master` pushed 2026-11-03 (Claude, at Matthew's say-so), tracking `origin/master`
 - [ ] After any `--probe` that includes the H2n: does it still sound right? Replug if your voice comes out deep
 - [x] Replug the H2n: the clock test of 2026-11-03 07:58 left it stuck at 48 kHz (deep). Replugged; 08:41 it read 44,098 frames/s again
-- [ ] Give the H2n's two endpoints the same rate, so it can't happen again: Sound control panel, Playback, Speakers (ZOOM H and F Series Audio), Properties, Advanced, Default Format 44100 Hz (or the recording side to 48000 Hz). Then `scripts/h2n_clock.py --play 44100` should stay at 44,100
+- [x] Give the H2n's two endpoints the same rate, so it can't happen again: Sound control panel, Playback, Speakers (ZOOM H and F Series Audio), Properties, Advanced, Default Format 44100 Hz. Done 2026-11-03 08:44; `scripts/h2n_clock.py --play 44100` then held 44,099-44,100 throughout, no replug needed. (Headphones (Realtek) went from 48 kHz to 44.1 kHz 24-bit on the way; harmless)
 
 ## Phase 1: devices (done 2026-11-02)
 - [x] Project skeleton, venv (3.14), `soundfile` + `soxr` + `SoundCard` installed
