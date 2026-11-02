@@ -93,6 +93,7 @@ class Player:
         self.start_frame = self.sent = start
         self.end = take.frames
         self.latency = 0.0
+        self.underflows = 0  # callbacks PortAudio says came too late: a gap was heard
         self.finished = threading.Event()
         self.failure: BaseException | None = None
         self._opened = threading.Event()
@@ -131,6 +132,8 @@ class Player:
                                  shape=(self.end, self.take.channels)) if self.end else None
 
                 def callback(outdata, frames, time_info, status):
+                    if status.output_underflow:
+                        self.underflows += 1
                     at = self.sent
                     n = max(min(frames, self.end - at), 0)
                     if n:

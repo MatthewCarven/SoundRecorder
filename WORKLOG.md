@@ -257,3 +257,30 @@ has no ASIO.
 **Not done**: playback is written (WASAPI shared with auto_convert, so the device
 keeps its own rate) and tested against a fake PortAudio, but not heard: it waits
 for Matthew's OK. Open and Save As use Windows' own file dialogs.
+
+### Playback, heard (Matthew's OK)
+
+A 997 Hz tone at -30 dBFS, 1.5 s with 10 ms fades, opened in the (invisible) window
+and played with its Play button to Windows' default playback device, Headphones
+(Realtek, 44.1 kHz), while a Recorder took that device's loopback. Seven plays:
+
+- 48 kHz sound (Windows converting 48 to 44.1 kHz and back for the loopback),
+  twice: 997.00 Hz, RMS -32.99 dBFS against -33.01 sent, a fitted amplitude of
+  exactly -30.00, onset 33-36 ms after Play (PortAudio says 24 ms of buffering),
+  5 ms loudness steady within 0.2 dB, the Position readout climbing to 1.50 s and
+  the buttons coming back as they should.
+- 44.1 kHz (nothing converted), five times. The first came back **89 ms too long
+  with a near-silent stretch inside**. The Player then gained an underflow count
+  (PortAudio's own flag). The next four: 0 underflows, no silence, and phase
+  tracked every 20 ms with no steps (a slipped or repeated sample would show as
+  one). soundcard was also instrumented for the last three: it made up no silence.
+- soundcard's `_record_chunk` returns zeros whenever no loopback packet comes for 4
+  device periods (~40 ms), even while sound is playing, and the late packets still
+  arrive afterwards: that makes a take longer with a silent stretch, as seen. A real
+  underrun would look the same in a loopback take, so the one long beep stays
+  unattributed; Matthew may have heard it (TODO).
+- What the fit left over (-64 dBFS, -31 dB under the tone, strongest near 840 and
+  1340 Hz) was there before the first beep too: other sound playing on the
+  headphones, which loopback hears as well.
+
+190 tests.

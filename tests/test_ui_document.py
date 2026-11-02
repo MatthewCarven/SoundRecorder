@@ -109,12 +109,17 @@ class FakeStream:
         self._thread = None
         FakeStream.last = self
 
+    late_blocks = ()  # blocks PortAudio reports an underflow before
+
     def start(self):
         def run():
+            block = 0
             while True:
                 out = np.full((256, self.channels), 9.0, np.float32)
+                status = types.SimpleNamespace(output_underflow=block in self.late_blocks)
+                block += 1
                 try:
-                    self.callback(out, 256, None, None)
+                    self.callback(out, 256, None, status)
                 except FakeSd.CallbackStop:
                     self.heard.append(out)
                     break
@@ -158,6 +163,17 @@ def test_playback_plays_from_the_position_to_the_end(fake_portaudio):
     assert np.array_equal(heard[:700], a[300:]) and not heard[700:].any()  # silence after the end
     assert player.position == 1000 and player.sent == 1000
     take.discard()  # the memory map was let go: Windows can delete it
+
+
+def test_playback_counts_the_underflows_portaudio_reports(fake_portaudio, monkeypatch):
+    monkeypatch.setattr(FakeStream, "late_blocks", (1, 2))
+    take = take_of(noise(2000))
+    player = Player(take, types.SimpleNamespace(index=0, channels=2, name="Speakers"))
+    player.start()
+    player.finished.wait(5)
+    player.stop()
+    assert player.underflows == 2
+    take.discard()
 
 
 def test_playback_takes_as_many_channels_as_the_device_has(fake_portaudio):

@@ -32,7 +32,7 @@ See PLAN.md for the why.
 - [x] `sound-recorder rec ...` on the command line
 - [x] Recorded from every API: WASAPI shared, MME, DirectSound, WDM-KS (Stereo Mix), loopback (Headphones), ASIO (FL Studio's driver). Not yet the H2n itself. WASAPI exclusive opens but repeats audio (below)
 - [x] Clock check: frames per second by the PC's clock (least-squares over every block, with its uncertainty); `rec` stops a take more than 1% off
-- [ ] Loopback signal check: a quiet test tone out, the same tone back in (warn Matthew first: it plays through his speakers or headphones)
+- [x] Loopback signal check: a quiet test tone out, the same tone back in (warn Matthew first: it plays through his speakers or headphones). Done in Phase 3 with the window's playback: pitch and level exact
 - [x] Ten-minute take, 48→44.1 kHz, no dropouts: WASAPI shared from Stereo Mix, 2026-11-03 07:10-07:20, 28,800,480 frames in, exactly 26,460,000 out, clock 48,000.0 frames/s, no overflows, longest wait between blocks 14 ms, worker never behind (chess engine running at Normal priority). The same through the engine in the tests, phase checked across the take. From the H2n over ASIO: still to do, below
 
 ## Surfaced in Phase 1
@@ -64,15 +64,19 @@ See PLAN.md for the why.
 - [x] File New / Open / Save / Save As / Revert; 3.1-style message boxes
 - [x] Device scan on a background thread; hot-plug and Refresh Devices rescan when nothing's open
 - [x] Playback written (WASAPI shared, Windows converts the rate), tested against a fake PortAudio only
+- [x] Playback heard (Matthew's OK, 2026-11-03): a -30 dBFS 997 Hz beep through the window to Headphones (Realtek), loopback-recorded. Pitch 997.00 Hz, level within 0.05 dB, onset ~35 ms after Play, position readout to the end. 7 plays: 6 clean (0 PortAudio underflows where counted, no slipped samples); 1 came back 89 ms long with a silent stretch, before anything was counted (below)
+- [ ] Did Matthew hear a hiccup in the third of the seven beeps (the first at 44.1 kHz)? If yes, it was playback; if not, likely soundcard's loopback padding
 - [ ] **Matthew**: does it look right? (`.venv\Scripts\pythonw -m soundrec.ui`, try `--zoom 2`)
 - [ ] **Matthew**: taskbar button, Alt+Tab, the minimize arrow, clicking the taskbar button to minimize and restore, dragging the caption, Win+D
-- [ ] **Matthew's OK first**: play a recording through his speakers or headphones
+- [x] **Matthew's OK first**: play a recording through his speakers or headphones (OK given; done, above)
 - [ ] Which zoom by default at 100% scaling: 1 (3.1's size, small on 1080p) or 2
 
 ## Surfaced in Phase 3
 - [ ] Open and Save As use Windows 11's own file dialogs. A 3.1-style one (File Name list, Directories, Drives) would fit Phase 5's dialogs, if wanted
 - [ ] "Switch To..." in the control menu opens Task View (`shell:::{3080F90E-...}`): untried
 - [ ] The app's taskbar icon is Tk's feather until Phase 6's icon
+- [ ] **soundcard's loopback makes up silence when packets are late**: if none arrive for 4 device periods (~40 ms), `_record_chunk` returns zeros for the time waited (mediafoundation.py:736-756), even while audio plays; the late packets still come after, so a loopback take gets longer with a silent stretch and nothing reported. One of seven test beeps came back 89 ms long that way (unattributed: playback underflows weren't counted yet). Options: count it as a discontinuity in LoopbackCapture, or our own WASAPI loopback capture
+- [ ] The Player counts PortAudio's underflows but the window doesn't show them
 - [ ] Playback reads the working copy through a memory map in the callback; a page fault there could glitch on a slow disk. A read-ahead thread if it ever does
 - [ ] Recording over the middle of a long sound copies the new part in at Stop (disk speed: about 4 s for 3 hours of stereo)
 - [ ] Keyboard focus on the buttons (Tab, then Space) works but starts on none; 3.1's starting focus unknown
