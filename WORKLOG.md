@@ -76,3 +76,73 @@ Matthew's warnings, mid-session:
 Tests: a conftest blocks importing `soundrec.pa` for the whole run. The first
 version did it per test, after collection had already started PortAudio (24 s,
 every ASIO driver loaded); now the suite takes 1 s.
+
+## 2026-11-03: Phase 2, the recording engine
+
+New modules: `convert.py` (channel map, then soxr's `ResampleStream` at VHQ, skipped
+when the rates match), `output.py` (format from the file name, bit depth, TPDF
+dither, a `Writer`, a preflight that opens the codec at the take's rate before
+recording), `takes.py` (the working copy), `engine.py` (`Recorder`: queue, worker,
+stats, levels), `capture.py` (PortAudio and loopback sources), `com.py` (COM
+apartments). `cli.py` gained `rec` and `recover`. 136 tests (96 new), 4.5 s.
+
+How it hangs together:
+- The capture thread only copies the block into a `SimpleQueue` with a timestamp.
+  The worker gathers ~10 ms of blocks (ASIO's come every 1.3 ms from the H2n),
+  converts, writes the working copy, the `--live` file if any, the peaks and the
+  stats. Behind, it catches up without pausing.
+- Each source opens, runs and closes its stream on its own thread in the apartment
+  its API wants: STA for PortAudio, MTA for soundcard's loopback. Opening ASIO from
+  a fresh STA thread (not the one that started PortAudio) works.
+- Working copy: raw float32 (`.f32`) plus a `.json`, in
+  `%LOCALAPPDATA%\SoundRecorder\takes`. The owner locks a byte past the end of the
+  `.json` (`msvcrt.locking`) for as long as it holds the take, so a take nobody
+  holds is one a crash left. flush per batch, fsync every 5 s. Tests redirect the
+  folder with `$SOUNDREC_TAKES` (autouse fixture), and one kills a real recording
+  subprocess and recovers its take.
+- PCM is quantised by us, not libsndfile: libsndfile scales float by 32767 where
+  PortAudio and its own reading use 32768, so 16-bit capture wouldn't come back bit
+  for bit. Blocks already on the target's grid skip the dither. 24/32 bits are rounded.
+- Clock check: a running least-squares slope of frames delivered against arrival
+  time, over every block, with its uncertainty. The first version (frames between
+  the first and last block) flagged DirectSound at +1.3% on a 3 s take: it delivers
+  in 64 ms lumps.
+
+Converter tests: a 997 Hz sine at 48 kHz, fed in blocks of 1 to 5000 frames
+(64 and 480 among them), comes out at 44.1 kHz identical to a one-shot
+`soxr.resample`, the level within 0.001 dB, zero phase shift, and no sample more
+than 1e-5 from the ideal sine (which also pins the pitch to under 0.0001 Hz). A
+ten-minute 48 to 44.1 kHz take through the engine comes out with exactly 26,460,000
+frames and the sine's phase where it belongs in 25 windows across it. An MP3, a
+Vorbis and an Opus file write and read back with pitch and level intact.
+
+On hardware (all 3 s takes, Stereo Mix or loopback, so nothing from the room):
+WASAPI shared, MME, DirectSound, WDM-KS, loopback (MP3 written live) and ASIO
+through FL Studio's driver all recorded, with no overflows. The H2n wasn't opened.
+MME and DirectSound now capture at the engine's rate by default: PortAudio says
+44.1 kHz for them, which made Windows resample 48 to 44.1 kHz before we saw it.
+
+The ten-minute take: `rec --device "Stereo Mix" --api WASAPI --capture-rate 48000
+--rate 44100 --seconds 600`, 07:10:39-07:20:43, with the chess engine running at
+Normal priority. 28,800,480 frames in, exactly 26,460,000 out (600.0 s), clock
+48,000.0 frames/s, no overflows, longest wait between blocks 14 ms, worker never
+behind. Stereo Mix carried near-silence (about -188 dBFS), so the file is ±1 LSB of
+dither; the count and the clock are the evidence. The same take from the H2n over
+ASIO waits for Matthew (below).
+
+**WASAPI exclusive capture is broken in sounddevice's PortAudio (19.7.0-devel).**
+The clock check read 94,418 frames/s on a 48 kHz exclusive take from Stereo Mix.
+Timed directly: shared mode gives 48,012 frames/s; exclusive gives 66-87 k frames/s
+at every block size (0, 480, 960, 4800) and latency (low, high, 50 ms, 200 ms)
+tried, on Stereo Mix and the mic array alike. PortAudio's own ADC timestamps keep
+real time while the frames run ahead. Counting the mic array's blocks by hash
+(nothing kept): shared mode, 299 blocks in 3 s, no repeats; exclusive, 420 blocks
+with 122 exact repeats of earlier blocks. So it re-delivers stale buffers. Now the
+engine judges the clock as it records (`Stats.clock_problem`: more than 1% off and
+well past its own uncertainty, after 2 s), and `rec` stops such a take with a plain
+explanation. A device stuck at the wrong rate would trip the same check.
+
+Found: Windows runs the H2n's playback endpoint at 48 kHz and its capture endpoint
+at 44.1 kHz. If one clock serves both directions, whichever opens last sets it, and
+recordings labelled 44.1 kHz would really be 48 kHz: deep voices. Untested; asked
+Matthew (via the planning session) whether he's there to replug it.

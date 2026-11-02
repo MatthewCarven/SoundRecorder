@@ -2,7 +2,9 @@
 
 A sound recorder for Windows that will look and behave like the Windows 3.1 one,
 over every Windows audio API, in every format. [PLAN.md](PLAN.md) has the design
-and the phases; this is Phase 1: finding devices and what they really do.
+and the phases. Done so far: Phase 1 (finding devices and what they really do) and
+Phase 2 (the recording engine, driven from the command line). The window comes in
+Phase 3.
 
 ## Set up
 
@@ -30,6 +32,40 @@ sound-recorder --watch
   hides (phantom "Internal AUX Jack" and the like).
 - `--watch` reports devices being plugged in and unplugged until Ctrl+C.
 
+### Recording
+
+```
+sound-recorder rec out.flac
+sound-recorder rec --device "Stereo Mix" --api WASAPI --capture-rate 48000 --rate 44100 --seconds 60 take.wav
+sound-recorder rec --device zoom --api ASIO --pick 2 --channels 1 --bits 24 voice.flac
+sound-recorder rec --api Loopback --live what-i-hear.mp3
+```
+
+- The file's extension picks the format: `.wav .flac .mp3 .ogg` (Vorbis) `.opus
+  .aiff .caf .w64 .rf64` and everything else libsndfile writes. `--bits 8|16|24|32|float`
+  sets the depth; 8 and 16 bits get TPDF dither.
+- `--device` is part of a name; `--api` picks the API when several have the device
+  (otherwise the most direct one wins). No `--device` records from the default.
+- `--capture-rate` opens the device at that rate; `--rate` is the file's, converted
+  live by soxr (skipped when they match). `--channels`, `--pick 3,4` (device
+  channels from 1; several into one channel are mixed) and `--keep-all` set the
+  channels. `--exclusive` is WASAPI exclusive mode.
+- `--seconds` stops after exactly that long; otherwise Ctrl+C stops. `--live` writes
+  the file as it records instead of when it stops.
+- At the end it reports what the device delivered: frames per second by the PC's
+  clock (a device at the wrong rate shows here), overflows and gaps.
+
+Every take is written as it records to a working copy: raw float32 in
+`%LOCALAPPDATA%\SoundRecorder\takes` (or `$SOUNDREC_TAKES`), deleted once the file
+is saved. If the recorder dies first, the take survives:
+
+```
+sound-recorder recover              lists takes a crash left behind
+sound-recorder recover 1            saves take 1 to the file it was meant for
+sound-recorder recover 1 other.wav  ... or to another file
+sound-recorder recover 1 --discard  deletes it
+```
+
 ## What the probe's answers mean
 
 Each API tells a different story about the same hardware:
@@ -48,7 +84,17 @@ Each API tells a different story about the same hardware:
   come out very deep until it's unplugged and plugged back in). `--probe` asks
   the same kind of questions, so after probing the H2n, check that it sounds
   right, and replug it if not. `--device` keeps the probe off it. Which query
-  sets it off isn't known yet: see TODO.
+  sets it off isn't known yet: see TODO. A lead (2026-11-03): Windows runs the
+  H2n's playback endpoint at 48 kHz and its capture endpoint at 44.1 kHz. If the
+  device has one clock for both, whichever opens last sets it. Setting both to the
+  same rate (Sound control panel, each device's Advanced tab) may cure it.
+- **WASAPI exclusive mode repeats audio.** The PortAudio that comes with
+  sounddevice (19.7.0-devel) hands over stale buffers again in exclusive mode:
+  about 40% more frames than the device makes, many of them exact repeats of
+  earlier blocks (seen on the Realtek mic array and Stereo Mix, at every block
+  size and latency tried, 2026-11-03; the H2n not tried). `rec --exclusive` stops
+  such a take after about 2 s, when the clock check sees it. Record in shared mode
+  or over ASIO instead. The probe's exclusive-mode answers are unaffected.
 - A `--probe` run usually takes 2-5 s (about 1 s of it starting PortAudio), but
   two runs once took 38 s between them while the laptop was busy. The cause
   wasn't pinned down.

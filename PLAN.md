@@ -158,7 +158,8 @@ small `comtypes` WASAPI capture, whichever works). `sound-recorder --list` print
 lot. Tests on fake device tables. **Done when** `--list` shows the ZOOM's real native
 formats over ASIO and WDM-KS.
 
-**Phase 2: recording engine.** Capture, queue, channel map, live soxr resampling, the
+**Phase 2: recording engine. Done 2026-11-03**, except the H2n's own ten-minute take,
+which waits for Matthew to be there to replug it (WORKLOG, TODO). Capture, queue, channel map, live soxr resampling, the
 working-copy file, the optional direct-to-file encoder, dither, recovery after a
 crash. `sound-recorder rec --device ... --rate 44100 --channels 1 out.flac` records
 from the command line. Tests: a sine wave through the converter comes out at the
@@ -187,13 +188,23 @@ format, folder), and a smoke test of the built exe.
   the thread that imports it, so recording threads in Phase 2 need COM set up
   themselves.
 - ~~MP3 in the `soundfile` wheel.~~ Settled: libsndfile 1.2.2 lists MPEG layers I, II
-  and III. Writing one is still to be checked in Phase 2.
+  and III, and in Phase 2 an MP3 written through it read back at the same length,
+  pitch and level (so did Vorbis and Opus).
 - **The H2n's sample-rate bug.** A format query can leave it at the wrong rate.
   Phase 2 tries a clock check: count the frames a device really delivers per
   wall-clock second against what it claims. If the bug changes how fast samples
   arrive (not known yet), that catches it as it happens, and lets us find which
   query sets it off (WASAPI exclusive, WDM-KS or ASIO), so the probe can avoid that
-  query. If it doesn't, a known tone has to be the judge.
+  query. If it doesn't, a known tone has to be the judge. Phase 2 built the clock
+  check (`rec` reports it after every take) and found a lead: Windows runs the H2n's
+  playback endpoint at 48 kHz and its capture endpoint at 44.1 kHz. One clock shared
+  by both directions would follow whichever opened last.
+- **WASAPI exclusive capture through PortAudio repeats audio** (found in Phase 2):
+  sounddevice's PortAudio 19.7.0-devel re-delivers stale buffers in exclusive mode,
+  40-60% more frames than the device makes. The clock check catches it and `rec`
+  stops. Exclusive recording needs a newer PortAudio or a WASAPI capture of our own
+  before the dialog offers it. Shared mode, ASIO, WDM-KS, MME, DirectSound and
+  loopback are all sound.
 - **ASIO drivers are single-client.** If FL Studio holds its ASIO driver, or the ZOOM
   is open in another app, opening it fails. Say so plainly in the UI, don't crash.
 - **Live conversion and lossy output.** Encoding live means each take is encoded
