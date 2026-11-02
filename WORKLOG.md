@@ -168,4 +168,6 @@ endpoint in the middle. Counts frames only; no audio kept.
 
 So the H2n's ten-minute take couldn't be done over ASIO (driver) or WASAPI exclusive
 (PortAudio). Over WASAPI shared it's the path the Stereo Mix take already proved.
-The test left the H2n at 48 kHz: asked Matthew to replug it.
+The test left the H2n at 48 kHz: Matthew replugged it, and at 08:41 its capture
+read 44,098.1 frames/s again. Its playback endpoint is still at 48 kHz, so the
+trap stays armed until both endpoints are set to one rate.

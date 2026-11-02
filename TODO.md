@@ -7,7 +7,7 @@ See PLAN.md for the why.
 - [x] GitHub: github.com/MatthewCarven/SoundRecorder, public; `origin` added
 - [x] Push: `master` pushed 2026-11-03 (Claude, at Matthew's say-so), tracking `origin/master`
 - [ ] After any `--probe` that includes the H2n: does it still sound right? Replug if your voice comes out deep
-- [ ] Replug the H2n: the clock test of 2026-11-03 07:58 left it stuck at 48 kHz (deep)
+- [x] Replug the H2n: the clock test of 2026-11-03 07:58 left it stuck at 48 kHz (deep). Replugged; 08:41 it read 44,098 frames/s again
 - [ ] Give the H2n's two endpoints the same rate, so it can't happen again: Sound control panel, Playback, Speakers (ZOOM H and F Series Audio), Properties, Advanced, Default Format 44100 Hz (or the recording side to 48000 Hz). Then `scripts/h2n_clock.py --play 44100` should stay at 44,100
 
 ## Phase 1: devices (done 2026-11-02)
