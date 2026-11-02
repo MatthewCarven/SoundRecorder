@@ -5,7 +5,7 @@ See PLAN.md for the why.
 ## Matthew
 - [x] `git init` this folder (Phase 1 committed 2026-11-02, branch `master`)
 - [x] GitHub: github.com/MatthewCarven/SoundRecorder, public; `origin` added
-- [ ] Push: `git push -u origin master` (the GitHub repo is empty, so it takes `master` as default)
+- [x] Push: `master` pushed 2026-11-03 (Claude, at Matthew's say-so), tracking `origin/master`
 - [ ] After any `--probe` that includes the H2n: does it still sound right? Replug if your voice comes out deep
 
 ## Phase 1: devices (done 2026-11-02)
