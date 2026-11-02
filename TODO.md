@@ -69,7 +69,7 @@ See PLAN.md for the why.
 - [ ] **Matthew**: does it look right? (`.venv\Scripts\pythonw -m soundrec.ui`, try `--zoom 2`)
 - [x] **Matthew**: taskbar button, Alt+Tab, the minimize arrow, clicking the taskbar button to minimize and restore, Win+D: all work (2026-11-03)
 - [x] Dragging the caption crashed the app (Matthew). Cause reproduced and fixed: the window moves itself now (WORKLOG)
-- [ ] **Matthew**: drag the caption again, and a message box's (File > New after recording asks one)
+- [x] **Matthew**: drag the caption again: works, no crash; Alt+F4 closes it (2026-11-03)
 - [x] **Matthew's OK first**: play a recording through his speakers or headphones (OK given; done, above)
 - [ ] Which zoom by default at 100% scaling: 1 (3.1's size, small on 1080p) or 2
 
