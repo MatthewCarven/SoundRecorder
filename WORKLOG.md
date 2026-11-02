@@ -172,3 +172,26 @@ The test left the H2n at 48 kHz: Matthew replugged it, and at 08:41 its capture
 read 44,098.1 frames/s again. He then set its playback endpoint to 44.1 kHz 16-bit,
 matching the capture side. 08:45, `h2n_clock.py --play 44100`: alone 44,098.6,
 with silence playing 44,099.4, after 44,100.0. Cured, with no replug.
+
+### The H2n in 4-channel surround mode
+
+Matthew switched it to 4-channel surround. It dropped off USB and came back as a
+different device on Windows' own USB audio driver: "Microphone (H2n)", **4 channels,
+24-bit**, 44.1 kHz, and "Headphones (H2n)", 2 ch, 24-bit, **48 kHz** (new endpoints,
+new defaults: the mismatch again). There's no ASIO in this mode; ZOOM's driver isn't
+used. `h2n_clock.py` now takes device names and finds either mode's by default.
+
+- With the mismatch, Windows wouldn't open Headphones (H2n) at all in shared mode,
+  at 48 kHz or 44.1 ("Invalid sample rate"). Once Matthew set it to 44.1 kHz it
+  opened. So this driver seems to refuse a clashing rate rather than let the clock
+  drift, unlike ZOOM's. With matched rates, `--play 44100` kept the input at 44,100.2.
+- The first fingerprint had all four channels as one signal: the same level to
+  0.1 dB, correlation 1.000, and every difference under one 24-bit step (float
+  rounding). Over WDM-KS, past Windows' engine, the four were distinct (peaks
+  -44.7/-44.2/-45.9/-45.7 dBFS). The cause was **"Enable audio enhancements"** on
+  Microphone (H2n): with it unticked, WASAPI gave four distinct channels too.
+- Fingerprint with enhancements off (09:01, room sound): RMS -56.9/-59.6/-56.2/-55.3
+  dBFS. Correlation 1-2 0.17 (a wide pair), 3-4 0.84 (a narrower pair), 1-3 0.47 and
+  2-4 0.44, the opposite corners 0.13 and 0.21. Two stereo pairs, 1 and 3 on one
+  side, 2 and 4 on the other: the front XY and rear MS sets, presumably. Which pair
+  is which needs sound from known directions.

@@ -48,6 +48,10 @@ See PLAN.md for the why.
 - [ ] **The H2n's ASIO driver delivers 21,381 frames/s**: one 64-frame buffer every 3.00 ms, at 44.1 and 48 kHz, with any block size, even from a bare callback. Over half the audio is lost. Its only buffer size is 64. Look for a buffer setting in the driver's own control panel (IASIO::controlPanel, vtable slot 21, could open it from asio.py); otherwise the Phase 5 dialog should warn against ASIO for it
 - [ ] Ten-minute take from the H2n: blocked over ASIO (above) and WASAPI exclusive (the PortAudio bug). Over WASAPI shared it's the same path as the Stereo Mix take, which passed
 - [ ] Phase 3: with the H2n's 64-frame ASIO buffer the callback wants the GIL every 1.3 ms; check for overflows with the window drawing (the CLI's main thread just sleeps)
+- [x] H2n in 4-channel surround mode: Windows' own USB driver, "Microphone (H2n)" 4 ch 24-bit, no ASIO. Its endpoints came up at 44.1/48 kHz, so Matthew set "Headphones (H2n)" to 44.1 kHz 24-bit too (2026-11-03); the clock then held with playback running
+- [x] Windows' "audio enhancements" on Microphone (H2n) collapsed its four channels into one copied signal in shared mode (WASAPI, MME, DirectSound). Unticked by Matthew; WDM-KS bypasses them anyway
+- [ ] The Phase 5 dialog could warn when a multichannel device's channels arrive identical (enhancements on, or a mono device posing as stereo): `h2n_clock.py`'s correlation check, run for a second
+- [ ] Which of the H2n's 4-channel pairs is front XY and which rear MS, and which channel is left: snap fingers at known spots and read the levels (Matthew there)
 - [ ] Loopback's clock reading means little while nothing plays: soundcard pads silence by its own timer
 - [ ] WAV stops at 4 GB (about 6.7 hours of 44.1 kHz 16-bit stereo; 3.4 h of float): Phase 5's Save could switch to RF64 past that. The working copy has no such limit
 

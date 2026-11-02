@@ -93,6 +93,12 @@ Each API tells a different story about the same hardware:
   Audio), Properties, Advanced, Default Format 44100 Hz (or set the recording side
   to 48000 Hz). `scripts/h2n_clock.py --play 48000` shows the effect. Done on this
   laptop (both at 44.1 kHz); `--play 44100` then held 44,100 throughout.
+- **The H2n in 4-channel surround mode** is a different device to Windows:
+  "Microphone (H2n)", 4 channels, 24-bit, on Windows' own USB driver (no ASIO). Its
+  endpoints need the same rate set again (they're new), and **"Enable audio
+  enhancements" must be off** on Microphone (H2n). With it on, Windows hands all
+  four channels over as one copied signal. `sound-recorder rec --device H2n
+  --keep-all --bits 24 out.wav` records all four.
 - **The H2n's ASIO driver loses over half the audio.** It hands over one 64-frame
   buffer every 3 ms (21,381 frames a second) at 44.1 and 48 kHz alike, with any
   block size; 64 frames is the only buffer size it offers. `rec` stops such a take
