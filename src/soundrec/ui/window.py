@@ -4,9 +4,15 @@ The app window is `overrideredirect`, so Windows draws no frame and we draw
 3.1's. That costs what Windows' frame gave for free: Tk turns such a window
 into a tool window, which has no taskbar button, isn't in Alt+Tab and can't
 be minimized. Win32 styles put those back (WS_EX_APPWINDOW in place of
-WS_EX_TOOLWINDOW, WS_MINIMIZEBOX), the window is minimized with ShowWindow,
-and dragging the caption hands the move to Windows (WM_NCLBUTTONDOWN on
-HTCAPTION), as a real caption would.
+WS_EX_TOOLWINDOW, WS_MINIMIZEBOX), and the window is minimized with ShowWindow.
+
+Dragging the caption moves the window ourselves, a SetWindowPos per mouse
+move. Handing the drag to Windows (WM_NCLBUTTONDOWN on HTCAPTION) crashed
+the app: Windows' move loop ran inside that call, Tk serviced its timers
+during it, and tkinter, called back while Python was already in a callback,
+aborted ("PyEval_RestoreThread ... thread state is NULL"). Never start a
+Windows modal loop synchronously from a Tk callback; PostMessage it instead,
+so it runs from Tk's own event loop (the control menu's Move does).
 
 Menus open in a second, borderless window that never takes the focus
 (WS_EX_NOACTIVATE), so the app's caption stays active and its keys keep
@@ -29,10 +35,9 @@ WS_EX_APPWINDOW = 0x00040000
 WS_EX_NOACTIVATE = 0x08000000
 SW_MINIMIZE = 6
 SW_RESTORE = 9
-WM_NCLBUTTONDOWN = 0x00A1
 WM_SYSCOMMAND = 0x0112
-HTCAPTION = 2
 SC_MOVE = 0xF010
+SM_YVIRTUALSCREEN = 77
 SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_NOACTIVATE, SWP_FRAMECHANGED = 0x1, 0x2, 0x4, 0x10, 0x20
 
 HWND_TOPMOST = wintypes.HWND(-1)
@@ -49,7 +54,6 @@ _user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, cty
                                  ctypes.c_int, ctypes.c_int, wintypes.UINT]
 _user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
 _user32.IsIconic.argtypes = [wintypes.HWND]
-_user32.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
 _user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
 _user32.GetForegroundWindow.restype = wintypes.HWND
 _user32.SetForegroundWindow.argtypes = [wintypes.HWND]
@@ -109,11 +113,12 @@ class PixelWindow:
         x, y = self.local(x_root, y_root)
         return 0 <= x < self.size[0] and 0 <= y < self.size[1]
 
-    def drag(self) -> None:
-        """Let Windows move the window with the mouse, as from a real caption.
-        Call from a button press; returns when the button is let go."""
-        _user32.ReleaseCapture()
-        _user32.SendMessageW(self.hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0)
+    def move_to(self, x_root: int, y_root: int) -> None:
+        """Put the window's top-left corner here, keeping the caption below the
+        top of the screen so it can always be grabbed again."""
+        top = _user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+        _user32.SetWindowPos(self.hwnd, None, x_root, max(y_root, top), 0, 0,
+                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
 
     def _style(self, index: int, add: int = 0, remove: int = 0) -> None:
         hwnd = self.hwnd

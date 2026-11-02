@@ -565,7 +565,9 @@ class App:
             return
         kind, what = hit
         if kind == "caption":
-            self.window.drag()
+            # Where on the window the caption was grabbed; _motion moves it.
+            self._held = ("drag", e.x_root - self.root.winfo_rootx(),
+                          e.y_root - self.root.winfo_rooty())
         elif kind == "minimize":
             self._held = ("minimize",)
             self.face.minimize_down = True
@@ -598,6 +600,9 @@ class App:
                 self.redraw()
             return
         if self._held is None:
+            return
+        if self._held[0] == "drag":
+            self.window.move_to(e.x_root - self._held[1], e.y_root - self._held[2])
             return
         hit, x = self._face_hit(e)
         if self._held[0] == "button":

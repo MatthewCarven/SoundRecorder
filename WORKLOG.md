@@ -284,3 +284,23 @@ and played with its Play button to Windows' default playback device, Headphones
   headphones, which loopback hears as well.
 
 190 tests.
+
+### Matthew's try of the frame, and the drag crash
+
+The taskbar button, Alt+Tab, minimizing and Win+D all work. **Dragging the caption
+crashed the app.** No Application-log entry (pythonw has no console, and Python's
+own fatal errors left none). The drag called SendMessage(WM_NCLBUTTONDOWN,
+HTCAPTION) from inside the click's Tk callback, so Windows' move loop ran inside
+that call. Tk services its event queue during a move (WM_ENTERSIZEMOVE switches it
+on), and a Python callback run then finds tkinter's saved thread state empty
+(Python is already inside a callback, its GIL released by ctypes): "Fatal Python
+error: PyEval_RestoreThread: ... the current Python thread state is NULL". Without
+a held button the real loop ends at once, so to reproduce it I sent Tk
+WM_ENTERSIZEMOVE / WM_MOUSEMOVE / WM_EXITSIZEMOVE from a callback with a Python
+timer due: same abort, 0xC0000409. Posted instead of sent (as the control menu's
+Move posts SC_MOVE), the same messages run from Tk's own event loop, and the timer
+ran fine.
+
+Fix: the window drags itself, a SetWindowPos per mouse move, the caption kept below
+the top of the screen; the message boxes' caption too. Synthetic Tk mouse events on
+the invisible window: dragged by 80,40 for 80,40 asked, the message box by -30,60.

@@ -231,7 +231,9 @@ format, folder), and a smoke test of the built exe.
 - **`overrideredirect` quirks** (taskbar, Alt+Tab, Win+D). These have known ctypes
   fixes, but they're fiddly. Phase 3 starts with them. Done in Phase 3
   (`ui/window.py`): WS_EX_APPWINDOW for the taskbar and Alt+Tab, WS_MINIMIZEBOX and
-  ShowWindow for minimizing, WM_NCLBUTTONDOWN for dragging; menus in a
+  ShowWindow for minimizing, SetWindowPos per mouse move for dragging (handing the
+  drag to Windows with WM_NCLBUTTONDOWN crashed tkinter); menus in a
   WS_EX_NOACTIVATE popup moved with SetWindowPos (Tk dropped its first move).
+  Matthew checked the taskbar, Alt+Tab, minimize and Win+D on 2026-11-03.
 - **Licences.** libsndfile, LAME, PortAudio and ffmpeg are LGPL or GPL builds. Fine
   for personal use; worth a look only if the exe is ever given away.

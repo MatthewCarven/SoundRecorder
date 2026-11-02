@@ -67,7 +67,9 @@ See PLAN.md for the why.
 - [x] Playback heard (Matthew's OK, 2026-11-03): a -30 dBFS 997 Hz beep through the window to Headphones (Realtek), loopback-recorded. Pitch 997.00 Hz, level within 0.05 dB, onset ~35 ms after Play, position readout to the end. 7 plays: 6 clean (0 PortAudio underflows where counted, no slipped samples); 1 came back 89 ms long with a silent stretch, before anything was counted (below)
 - [ ] Did Matthew hear a hiccup in the third of the seven beeps (the first at 44.1 kHz)? If yes, it was playback; if not, likely soundcard's loopback padding
 - [ ] **Matthew**: does it look right? (`.venv\Scripts\pythonw -m soundrec.ui`, try `--zoom 2`)
-- [ ] **Matthew**: taskbar button, Alt+Tab, the minimize arrow, clicking the taskbar button to minimize and restore, dragging the caption, Win+D
+- [x] **Matthew**: taskbar button, Alt+Tab, the minimize arrow, clicking the taskbar button to minimize and restore, Win+D: all work (2026-11-03)
+- [x] Dragging the caption crashed the app (Matthew). Cause reproduced and fixed: the window moves itself now (WORKLOG)
+- [ ] **Matthew**: drag the caption again, and a message box's (File > New after recording asks one)
 - [x] **Matthew's OK first**: play a recording through his speakers or headphones (OK given; done, above)
 - [ ] Which zoom by default at 100% scaling: 1 (3.1's size, small on 1080p) or 2
 

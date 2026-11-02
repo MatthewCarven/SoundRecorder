@@ -194,6 +194,8 @@ class MessageBox:
         y = sy + (sh - self.height * z) // 2
         top.geometry(f"+{max(x, 0)}+{max(y, 0)}")
 
+        grab = []  # where the caption was grabbed, while it's dragged
+
         def redraw():
             window.show(self.paint())
 
@@ -204,10 +206,12 @@ class MessageBox:
                 self.pressed = self.focus = i
                 redraw()
             elif self.on_caption(x, y):
-                window.drag()
+                grab[:] = [e.x_root - top.winfo_rootx(), e.y_root - top.winfo_rooty()]
 
         def motion(e):
-            if self.pressed is not None:
+            if grab:
+                window.move_to(e.x_root - grab[0], e.y_root - grab[1])
+            elif self.pressed is not None:
                 i = self.button_at(e.x // z, e.y // z)
                 down = self.focus if i == self.focus else None
                 if down != self.pressed:
@@ -215,6 +219,7 @@ class MessageBox:
                     redraw()
 
         def release(e):
+            grab.clear()
             was, self.pressed = self.pressed, None
             if was is not None and self.button_at(e.x // z, e.y // z) == was:
                 self.answer = self.buttons[was][1]
