@@ -137,6 +137,15 @@ def test_peaks_and_clipping():
     take.discard()
 
 
+def test_recent_is_the_latest_output_oldest_first():
+    x = noise(48000)
+    rec, take = record(ArraySource(x, 48000, block=[480, 64, 4799, 1]))
+    assert np.array_equal(rec.recent(1000), x[-1000:])
+    assert len(rec.recent(10 ** 6)) == int(48000 * 0.25)  # capped at SCOPE_SECONDS
+    assert np.array_equal(rec.recent(10 ** 6), x[-12000:])
+    take.discard()
+
+
 def test_the_clock_check_sees_a_device_at_the_wrong_rate():
     # The H2n's bug, as numbers: claims 44.1 kHz, delivers 48 kHz, in 64-frame blocks.
     s = Stats(44100)

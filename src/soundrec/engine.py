@@ -35,6 +35,7 @@ DISCONTINUITY = 2  # the API says what it delivered has a gap in it
 
 BATCH_SECONDS = 0.5  # the most audio the worker converts in one go
 GATHER_SECONDS = 0.01  # how long the worker lets blocks gather: ASIO's come every 1.3 ms
+SCOPE_SECONDS = 0.25   # the latest output kept for a live display (Recorder.recent)
 
 
 @dataclass
@@ -160,6 +161,8 @@ class Recorder:
         self._worker: threading.Thread | None = None
         self._peaks = np.zeros(self.channels, np.float32)
         self._peaks_lock = threading.Lock()
+        self._scope = np.zeros((max(int(self.rate * SCOPE_SECONDS), 1), self.channels), np.float32)
+        self._scope_end = 0  # where the next frame goes in the ring
         self.running = False
 
     # -- control ------------------------------------------------------------
@@ -208,6 +211,15 @@ class Recorder:
     def failure(self) -> BaseException | None:
         """Why the recording can't go on, if it can't."""
         return self.error or getattr(self.source, "failure", None)
+
+    def recent(self, frames: int) -> np.ndarray:
+        """The last `frames` output frames (up to SCOPE_SECONDS' worth), oldest
+        first: for a live picture of what is coming in."""
+        size = len(self._scope)
+        frames = min(frames, size)
+        with self._peaks_lock:
+            index = (np.arange(self._scope_end - frames, self._scope_end)) % size
+            return self._scope[index]
 
     def take_peaks(self) -> np.ndarray:
         """Each output channel's peak since the last call (0 to 1, or over)."""
@@ -284,6 +296,11 @@ class Recorder:
         self.stats.clipped += int(np.count_nonzero(size >= 1.0))
         with self._peaks_lock:
             np.maximum(self._peaks, size.max(axis=0), out=self._peaks)
+            ring = len(self._scope)
+            tail = out[-ring:]
+            index = (self._scope_end + np.arange(len(tail))) % ring
+            self._scope[index] = tail
+            self._scope_end = (self._scope_end + len(tail)) % ring
         if self._writer is not None and self.direct_error is None:
             try:
                 self._writer.write(out)

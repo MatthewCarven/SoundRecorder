@@ -408,7 +408,12 @@ def _recover(argv) -> int:
             t.release()  # no-op for the one saved or deleted
 
 
-COMMANDS = {"rec": _rec, "recover": _recover}
+def _gui(argv) -> int:
+    from .ui.app import main as gui_main
+    return gui_main(argv)
+
+
+COMMANDS = {"rec": _rec, "recover": _recover, "gui": _gui}
 
 
 def main(argv=None) -> int:
@@ -418,8 +423,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="sound-recorder",
         description="Sound Recorder: every Windows capture API, every format.",
-        epilog="Commands: `sound-recorder rec OUT` records, `sound-recorder recover` saves "
-               "takes a crash left behind (each has --help).")
+        epilog="Commands: `sound-recorder gui` opens the window, `sound-recorder rec OUT` "
+               "records, `sound-recorder recover` saves takes a crash left behind (each has --help).")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--list", action="store_true", help="list capture devices (the default)")
     parser.add_argument("--probe", action="store_true",

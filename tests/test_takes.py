@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 import soundfile as sf
 
 from soundrec.output import spec_for
@@ -36,6 +37,24 @@ def test_a_take_reads_back_what_was_written(takes_folder):
     assert info["frames"] == 1500 and info["device"] == "WASAPI: Mic" and info["finished"]
     take.discard()
     assert not take.path.exists() and not take.info_path.exists()
+
+
+def test_write_at_overwrites_and_extends(takes_folder):
+    take = Take.create(48000, 2)
+    a = noise(1000)
+    take.write(a)
+    with pytest.raises(RuntimeError):
+        take.write_at(0, [a])  # still recording
+    take.finish()
+    b, c = noise(300, seed=1), noise(500, seed=2)
+    take.write_at(200, [b])
+    take.write_at(800, [c[:100], c[100:]])
+    expected = np.vstack([a[:200], b, a[500:800], c])
+    assert np.array_equal(take.read(), expected) and take.frames == 1300
+    assert json.loads(take.info_path.read_text())["frames"] == 1300
+    with pytest.raises(ValueError):
+        take.write_at(1301, [b])
+    take.discard()
 
 
 def test_a_held_take_is_no_orphan_and_a_released_one_is(takes_folder):

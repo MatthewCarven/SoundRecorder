@@ -115,6 +115,25 @@ class Take:
         self.info["frames"] = self.frames
         self._rewrite_info()
 
+    def write_at(self, start: int, blocks) -> None:
+        """Write frames over a finished take from frame `start` on, extending
+        it past the end if need be: a recording dropped into a sound."""
+        if self._out is not None:
+            raise RuntimeError("the take is still being recorded")
+        if not 0 <= start <= self.frames:
+            raise ValueError(f"frame {start} is outside the take ({self.frames} frames)")
+        with open(self.path, "r+b") as f:
+            f.seek(start * self.channels * 4)
+            for block in blocks:
+                block = np.ascontiguousarray(block, dtype=np.float32)
+                if block.ndim != 2 or block.shape[1] != self.channels:
+                    raise ValueError(f"expected frames x {self.channels} channels, got {block.shape}")
+                f.write(block.tobytes())
+            f.flush()
+            os.fsync(f.fileno())
+        self.info["frames"] = self.frames
+        self._rewrite_info()
+
     def _rewrite_info(self) -> None:
         text = json.dumps(self.info, indent=1).encode("utf-8")
         self._lock.seek(0)
