@@ -83,11 +83,19 @@ Each API tells a different story about the same hardware:
   its formats** (Matthew's report: some versions of Audacity do it, and voices
   come out very deep until it's unplugged and plugged back in). `--probe` asks
   the same kind of questions, so after probing the H2n, check that it sounds
-  right, and replug it if not. `--device` keeps the probe off it. Which query
-  sets it off isn't known yet: see TODO. A lead (2026-11-03): Windows runs the
-  H2n's playback endpoint at 48 kHz and its capture endpoint at 44.1 kHz. If the
-  device has one clock for both, whichever opens last sets it. Setting both to the
-  same rate (Sound control panel, each device's Advanced tab) may cure it.
+  right, and replug it if not. `--device` keeps the probe off it.
+  **Cause found (2026-11-03):** the H2n has one clock for both directions, and
+  Windows runs its playback endpoint at 48 kHz but its capture endpoint at 44.1
+  kHz. Opening its playback side at 48 kHz (even to play silence) switched its
+  input from 44,100 to 48,000 frames a second, still labelled 44.1 kHz, and it
+  stayed there after the playback stopped. **The cure is to give both endpoints
+  the same rate**: Sound control panel, Playback, Speakers (ZOOM H and F Series
+  Audio), Properties, Advanced, Default Format 44100 Hz (or set the recording side
+  to 48000 Hz). `scripts/h2n_clock.py --play 48000` shows the effect.
+- **The H2n's ASIO driver loses over half the audio.** It hands over one 64-frame
+  buffer every 3 ms (21,381 frames a second) at 44.1 and 48 kHz alike, with any
+  block size; 64 frames is the only buffer size it offers. `rec` stops such a take
+  after 2 s. Record the H2n over WASAPI shared (or MME, DirectSound, WDM-KS) instead.
 - **WASAPI exclusive mode repeats audio.** The PortAudio that comes with
   sounddevice (19.7.0-devel) hands over stale buffers again in exclusive mode:
   about 40% more frames than the device makes, many of them exact repeats of

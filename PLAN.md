@@ -158,8 +158,9 @@ small `comtypes` WASAPI capture, whichever works). `sound-recorder --list` print
 lot. Tests on fake device tables. **Done when** `--list` shows the ZOOM's real native
 formats over ASIO and WDM-KS.
 
-**Phase 2: recording engine. Done 2026-11-03**, except the H2n's own ten-minute take,
-which waits for Matthew to be there to replug it (WORKLOG, TODO). Capture, queue, channel map, live soxr resampling, the
+**Phase 2: recording engine. Done 2026-11-03.** The ten-minute take ran over WASAPI
+from Stereo Mix; the H2n's own couldn't run over ASIO (its driver loses half the
+audio) or WASAPI exclusive (PortAudio repeats blocks): WORKLOG. Capture, queue, channel map, live soxr resampling, the
 working-copy file, the optional direct-to-file encoder, dither, recovery after a
 crash. `sound-recorder rec --device ... --rate 44100 --channels 1 out.flac` records
 from the command line. Tests: a sine wave through the converter comes out at the
@@ -195,10 +196,15 @@ format, folder), and a smoke test of the built exe.
   wall-clock second against what it claims. If the bug changes how fast samples
   arrive (not known yet), that catches it as it happens, and lets us find which
   query sets it off (WASAPI exclusive, WDM-KS or ASIO), so the probe can avoid that
-  query. If it doesn't, a known tone has to be the judge. Phase 2 built the clock
-  check (`rec` reports it after every take) and found a lead: Windows runs the H2n's
-  playback endpoint at 48 kHz and its capture endpoint at 44.1 kHz. One clock shared
-  by both directions would follow whichever opened last.
+  query. If it doesn't, a known tone has to be the judge. **Settled in Phase 2**:
+  the H2n has one clock for both directions, and Windows ran its playback endpoint
+  at 48 kHz and its capture endpoint at 44.1 kHz. Opening the playback side at 48
+  kHz moved the capture side to 48,000 frames a second, still labelled 44.1 kHz,
+  until a replug. The cure is one rate on both endpoints (Matthew's setting); the
+  clock check in `rec` catches it if it happens anyway.
+- **The H2n's ASIO driver loses over half the audio** (found in Phase 2): one
+  64-frame buffer every 3 ms, 21,381 frames a second, at either rate. Unless its
+  control panel has a bigger buffer, the dialog should steer the H2n to WASAPI.
 - **WASAPI exclusive capture through PortAudio repeats audio** (found in Phase 2):
   sounddevice's PortAudio 19.7.0-devel re-delivers stale buffers in exclusive mode,
   40-60% more frames than the device makes. The clock check catches it and `rec`

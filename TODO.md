@@ -7,7 +7,8 @@ See PLAN.md for the why.
 - [x] GitHub: github.com/MatthewCarven/SoundRecorder, public; `origin` added
 - [x] Push: `master` pushed 2026-11-03 (Claude, at Matthew's say-so), tracking `origin/master`
 - [ ] After any `--probe` that includes the H2n: does it still sound right? Replug if your voice comes out deep
-- [ ] Be on hand to replug the H2n for its tests (the ten-minute ASIO take and the clock check, under "Surfaced in Phase 2")
+- [ ] Replug the H2n: the clock test of 2026-11-03 07:58 left it stuck at 48 kHz (deep)
+- [ ] Give the H2n's two endpoints the same rate, so it can't happen again: Sound control panel, Playback, Speakers (ZOOM H and F Series Audio), Properties, Advanced, Default Format 44100 Hz (or the recording side to 48000 Hz). Then `scripts/h2n_clock.py --play 44100` should stay at 44,100
 
 ## Phase 1: devices (done 2026-11-02)
 - [x] Project skeleton, venv (3.14), `soundfile` + `soxr` + `SoundCard` installed
@@ -35,7 +36,7 @@ See PLAN.md for the why.
 - [x] Ten-minute take, 48→44.1 kHz, no dropouts: WASAPI shared from Stereo Mix, 2026-11-03 07:10-07:20, 28,800,480 frames in, exactly 26,460,000 out, clock 48,000.0 frames/s, no overflows, longest wait between blocks 14 ms, worker never behind (chess engine running at Normal priority). The same through the engine in the tests, phase checked across the take. From the H2n over ASIO: still to do, below
 
 ## Surfaced in Phase 1
-- [ ] **H2n sample-rate bug**: a format query can leave it at the wrong rate, so it sounds deep until replugged (Matthew; Audacity does it). Try a clock check (frames delivered per wall-clock second against the claimed rate), then find which query sets it off: WASAPI exclusive, WDM-KS or ASIO. Needs Matthew on hand to replug
+- [x] **H2n sample-rate bug**: a format query can leave it at the wrong rate, so it sounds deep until replugged (Matthew; Audacity does it). The clock check found it (Phase 2, 2026-11-03): opening its playback endpoint at 48 kHz moves its one clock there, and the capture side, labelled 44.1 kHz, stays at 48 kHz until replugged. ASIO at 48 kHz didn't do it. Whether the probe's 48 kHz checks on the capture side can do it too wasn't tried; with both endpoints on one rate it shouldn't matter
 - [ ] Unplugging the H2n marked its render endpoint not present at once, but its capture endpoint only 100 s later (21:46:46 / 21:48:26). The rescan saw the device gone straight away, but a capture-only USB mic might be noticed late. Try an `IMMNotificationClient` if it matters
 - [ ] Scan on a background thread in the window. A run usually takes 2-5 s (PortAudio itself ~1 s), but two runs once took 38 s while the laptop was busy, cause unknown
 - [ ] "ZOOM H and F Series Async ASIO" won't load (CoCreateInstance: E_OUTOFMEMORY); PortAudio skips it too. Probably only works with the device in another mode
@@ -43,8 +44,9 @@ See PLAN.md for the why.
 
 ## Surfaced in Phase 2
 - [ ] **WASAPI exclusive capture is broken in sounddevice's PortAudio (19.7.0-devel)**: it re-delivers stale buffers, 40-60% more frames than the device makes, many exact repeats (Realtek mic array and Stereo Mix, every block size and latency tried). `rec` stops such a take after ~2 s. Options: a newer PortAudio build, or our own WASAPI exclusive capture (ctypes, like asio.py). Until then Phase 5's dialog shouldn't offer exclusive recording
-- [ ] **H2n lead**: Windows runs its playback endpoint at 48 kHz and its capture endpoint at 44.1 kHz. If one clock serves both, whichever opens last sets it: deep voices. Test with Matthew there to replug: record the H2n (WASAPI shared, 44.1 kHz) and read `rec`'s clock line; then again while something plays to its output at 48 kHz. If the clock reads ~48,000, setting both endpoints to one rate (Sound control panel, Advanced) may be the cure (his setting to change)
-- [ ] Ten-minute 48→44.1 kHz take from the H2n over ASIO, with Matthew on hand (opening it at 48 kHz may trip its bug). WASAPI exclusive can wait for the fix above
+- [x] **H2n deep-voices bug: cause found** (2026-11-03, `scripts/h2n_clock.py --play 48000`): capture alone 44,098 frames/s; with silence playing to its playback endpoint at 48 kHz, 48,000 frames/s, and still 48,000 after the playback stopped. One clock for both directions, and Windows has the two endpoints at different rates. Cure: same rate on both (Matthew, below)
+- [ ] **The H2n's ASIO driver delivers 21,381 frames/s**: one 64-frame buffer every 3.00 ms, at 44.1 and 48 kHz, with any block size, even from a bare callback. Over half the audio is lost. Its only buffer size is 64. Look for a buffer setting in the driver's own control panel (IASIO::controlPanel, vtable slot 21, could open it from asio.py); otherwise the Phase 5 dialog should warn against ASIO for it
+- [ ] Ten-minute take from the H2n: blocked over ASIO (above) and WASAPI exclusive (the PortAudio bug). Over WASAPI shared it's the same path as the Stereo Mix take, which passed
 - [ ] Phase 3: with the H2n's 64-frame ASIO buffer the callback wants the GIL every 1.3 ms; check for overflows with the window drawing (the CLI's main thread just sleeps)
 - [ ] Loopback's clock reading means little while nothing plays: soundcard pads silence by its own timer
 - [ ] WAV stops at 4 GB (about 6.7 hours of 44.1 kHz 16-bit stereo; 3.4 h of float): Phase 5's Save could switch to RF64 past that. The working copy has no such limit

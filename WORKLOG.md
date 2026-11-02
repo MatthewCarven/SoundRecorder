@@ -144,5 +144,28 @@ explanation. A device stuck at the wrong rate would trip the same check.
 
 Found: Windows runs the H2n's playback endpoint at 48 kHz and its capture endpoint
 at 44.1 kHz. If one clock serves both directions, whichever opens last sets it, and
-recordings labelled 44.1 kHz would really be 48 kHz: deep voices. Untested; asked
-Matthew (via the planning session) whether he's there to replug it.
+recordings labelled 44.1 kHz would really be 48 kHz: deep voices.
+
+### The H2n tests (Matthew on hand to replug)
+
+New `scripts/h2n_clock.py`: records the H2n over WASAPI shared and fits frames
+against the PC's clock per stretch, optionally playing silence to its playback
+endpoint in the middle. Counts frames only; no audio kept.
+
+- 07:55 baseline, capture alone: 44,099.8 frames/s for 44,100. Healthy.
+- 07:55 the ten-minute take over ASIO, 48 to 44.1 kHz: stopped by the clock check
+  after 4.6 s. The driver delivered **21,333 frames/s**. A bare sounddevice callback
+  at 44.1 kHz got the same: one 64-frame buffer every 3.00 ms (21,381 frames/s by the
+  PC's clock and PortAudio's ADC times alike), and with a 512-frame block size, 512
+  every 24 ms. So the ZOOM driver services its buffer on a fixed 3 ms tick and its
+  one buffer size (64) holds 1.5 ms: over half the audio is lost. Not our engine.
+- 07:56 baseline again after ASIO at 48 and 44.1 kHz: 44,100.3. ASIO didn't trip it.
+- 07:57 **the bug, caught**: capture alone 44,098.2; with silence playing to
+  "Speakers (ZOOM H and F Series Audio)" at 48 kHz (WASAPI shared), **48,000.4**;
+  playback stopped, still **48,000.1**. One clock for both directions, and it stays
+  at whatever opened last until a replug. Audacity opening its output at 48 kHz fits.
+  Cure: both endpoints on one rate, Matthew's setting (TODO).
+
+So the H2n's ten-minute take couldn't be done over ASIO (driver) or WASAPI exclusive
+(PortAudio). Over WASAPI shared it's the path the Stereo Mix take already proved.
+The test left the H2n at 48 kHz: asked Matthew to replug it.
