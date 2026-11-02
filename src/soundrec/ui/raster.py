@@ -24,6 +24,8 @@ GREY = (192, 192, 192)        # button face, window background
 DARK = (128, 128, 128)        # shadows, disabled text on grey
 NAVY = (0, 0, 128)            # active caption, menu highlight
 GREEN = (0, 255, 0)           # the waveform
+YELLOW = (255, 255, 0)        # the level meter's loud end
+RED = (255, 0, 0)             # ... and its top
 
 # The standard VGA sixteen, in palette order. 3.1 inverted a colour by its
 # index (15 - i), so light grey inverts to dark grey, not to (63, 63, 63).

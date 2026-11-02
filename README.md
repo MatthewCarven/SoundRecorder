@@ -32,6 +32,10 @@ or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
 - **The buttons**: rewind, forward, play, stop, record. Recording starts at the
   position and records over what follows, as in 3.1; the wave box shows what's
   coming in. The scrollbar moves the position (arrows 0.1 s, the trough 1 s).
+- **The level meter** (ours, not 3.1's): while recording or playing, two bars in
+  the wave box, left along the top and right along the bottom, from -60 dBFS at
+  the left edge to 0 at the right: green, yellow from -12, red from -3, with a
+  peak-hold tick. Stopped, the box is 3.1's own.
 - **File**: New, Open (anything libsndfile reads), Save, Save As (the extension
   picks the format: WAV, FLAC, MP3, Ogg, Opus, AIFF...), Revert, Exit.
 - **Device > Refresh Devices** looks again; plugging a device in does it too.

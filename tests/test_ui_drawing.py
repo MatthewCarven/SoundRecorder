@@ -170,3 +170,42 @@ def test_the_default_zoom_doubles_at_100_percent():
     from soundrec.ui.window import default_zoom
 
     assert [default_zoom(dpi) for dpi in (96, 120, 144, 192)] == [2, 2, 3, 4]
+
+
+# -- the level meter ----------------------------------------------------------------
+
+def test_the_meter_jumps_up_falls_back_and_holds():
+    from soundrec.ui.meter import FLOOR_DB, Meter, pair
+
+    m = Meter()
+    m.update([0.5, 0.25], 0.0)
+    (left, right), (left_hold, _) = m.reading
+    assert left == pytest.approx(-6.02, abs=0.01) and right == pytest.approx(-12.04, abs=0.01)
+    m.update([0.0, 0.0], 0.5)  # silence: falls 20 dB a second, the hold stays
+    (left, _), (left_hold, _) = m.reading
+    assert left == pytest.approx(-16.02, abs=0.01) and left_hold == pytest.approx(-6.02, abs=0.01)
+    m.update([0.0, 0.0], 2.0)  # past the hold time: the hold follows the bar down
+    (left, _), (left_hold, _) = m.reading
+    assert left == pytest.approx(-46.02, abs=0.01) and left_hold == left
+    m.update([0.0, 0.0], 4.0)
+    assert m.reading == ((FLOOR_DB, FLOOR_DB), (FLOOR_DB, FLOOR_DB))
+    assert pair([0.3]) == (0.3, 0.3) and pair([0.1, 0.2, 0.4, 0.3]) == (0.4, 0.3)
+
+
+def test_the_meter_bars_light_green_yellow_red_under_the_trace():
+    from soundrec.ui.raster import RED, YELLOW
+
+    state = F.FaceState(meter=((-1.0, -30.0), (-0.5, -20.0)))
+    px = F.paint(state).pixels
+    top, bottom = px[76:79, 93:224], px[108:111, 93:224]
+    # -12 dBFS is column 105 of 131, -3 is 124; -1 lights 129 columns.
+    assert tuple(top[0, 104]) == GREEN and tuple(top[0, 105]) == YELLOW and tuple(top[0, 124]) == RED
+    assert tuple(top[0, 128]) == RED and tuple(top[0, 129]) == RED  # the bar's end, then its hold mark
+    assert tuple(top[0, 130]) == BLACK
+    assert F.meter_column(-1.0, 131) == 129 and F.meter_column(-0.5, 131) == 130
+    lit = np.any(bottom[1] != BLACK, axis=1)
+    bar_end, mark = F.meter_column(-30.0, 131), F.meter_column(-20.0, 131) - 1
+    assert lit[:bar_end].all() and not lit[bar_end:mark].any() and lit[mark]
+    assert tuple(bottom[1, F.meter_column(-20.0, 131) - 1]) == GREEN  # its hold mark
+    assert tuple(px[93, 150]) == GREEN  # the trace still runs through the middle
+    assert tuple(F.paint(F.FaceState()).pixels[77, 100]) == BLACK  # no bars when stopped

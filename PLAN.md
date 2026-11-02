@@ -155,7 +155,10 @@ NAudio has no DirectSound capture and would need two separate encoder packages.
   - Device (ours): Recording Device..., Output Format..., Refresh Devices
   - Help: About Sound Recorder...
 - A level meter while recording, in keeping with the look (a green bar inside the
-  waveform box, or the trace itself going live as it did in 3.1).
+  waveform box, or the trace itself going live as it did in 3.1). Both, as built:
+  the trace goes live, and at Matthew's request (2026-11-03) two peak-meter bars
+  run along the wave box's top and bottom edges (left, right) while recording or
+  playing, -60 to 0 dBFS in 3.1's green, yellow and red, with peak hold.
 
 ## Phases (one session each)
 

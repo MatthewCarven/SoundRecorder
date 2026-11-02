@@ -308,3 +308,15 @@ Matthew then dragged it for real: fine, and Alt+F4 closed it.
 
 He liked it at 2x, so 2x is the default at 100% scaling (3x at 150%, 4x at 200%;
 `--zoom 1` for 3.1's own size). **Phase 3 done.** 191 tests.
+
+### A level meter (Matthew asked)
+
+To keep 3.1's window and size, it lives in the wave box: two 3-row bars along its
+top and bottom edges (left, right) under the trace, lit from -60 dBFS at the left to
+0 at the right, green, then yellow from -12 and red from -3 (3.1's palette has all
+three), with a peak-hold tick. Only while recording or playing; stopped, the box is
+3.1's own. `ui/meter.py` is the behaviour: up at once, down 20 dB a second, hold
+1.5 s; a mono sound on both bars, more channels odd/even as left/right. Fed by the
+Recorder's peaks while recording and by the frames heard (the Player's position)
+while playing. Played the -30 dBFS beep once more through the invisible window: the
+meter read -30.0 dBFS throughout and was gone after Stop. 193 tests.

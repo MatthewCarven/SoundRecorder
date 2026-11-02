@@ -13,9 +13,12 @@ import argparse
 import os
 import queue
 import sys
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
+
+import numpy as np
 
 from .. import __version__
 from . import face as F
@@ -23,6 +26,7 @@ from .audio import DeviceList, PlaybackError, Player
 from .dialog import MessageBox
 from .document import Document
 from .menus import SEPARATOR, Item, Menu, Tracker, item_at, paint_popup
+from .meter import Meter
 from .window import AppWindow, PopupWindow, default_zoom, dpi_aware
 
 TRACE_SECONDS = 0.012  # the stretch of sound the wave box shows
@@ -90,6 +94,8 @@ class App:
         self.recorder = None
         self.record_at = 0         # where the running recording goes in the sound
         self.player: Player | None = None
+        self.meter = Meter()
+        self._metered_to = 0       # playback: the frame the meter has seen up to
         self.wanted = (device, api)
         self.device = None         # the capture device recordings come from
         self.device_problem: str | None = None
@@ -157,6 +163,7 @@ class App:
                      "play": idle and length > 0, "stop": not idle,
                      "record": idle and (self.device is not None or not self.devices.busy)}
         f.trace = self._trace(at)
+        f.meter = self.meter.reading if self.busy else None
         file_menu, device_menu = self.menus[1], self.menus[4]
         file_menu.item("save").enabled = file_menu.item("saveas").enabled = doc.take is not None
         file_menu.item("revert").enabled = doc.path is not None and doc.dirty
@@ -222,9 +229,23 @@ class App:
         if self.player is not None and self.player.finished.is_set():
             self._stop_playing()
         if self.busy:
+            self._update_meter()
             self._sync()
             self._render()
         self.root.after(TICK_MS if self.busy else IDLE_TICK_MS, self._tick)
+
+    def _update_meter(self) -> None:
+        """Peaks since the last tick: what came in, or what was heard."""
+        now = time.monotonic()
+        if self.recorder is not None:
+            self.meter.update(self.recorder.take_peaks(), now)
+        elif self.player is not None:
+            at = self.player.position
+            start = max(self._metered_to, at - (self.doc.rate or 0))  # a second back at most
+            block = self.doc.read(start, at - start) if at > start else None
+            self._metered_to = max(self._metered_to, at)
+            self.meter.update(np.abs(block).max(axis=0) if block is not None and len(block) else [0.0],
+                              now)
 
     # -- devices --------------------------------------------------------------------
 
@@ -282,6 +303,7 @@ class App:
             self.message(f"Can't record from {self.device.name}.\n\n{e}", kind="warning")
             return
         self.recorder, self.record_at = rec, self.position
+        self.meter.reset()
         self._sync()
         self.redraw()
 
@@ -330,6 +352,8 @@ class App:
             self.message(str(e), kind="warning")
             return
         self.player = player
+        self.meter.reset()
+        self._metered_to = self.position
         self._sync()
         self.redraw()
 

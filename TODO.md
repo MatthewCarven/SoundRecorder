@@ -72,6 +72,8 @@ See PLAN.md for the why.
 - [x] **Matthew**: drag the caption again: works, no crash; Alt+F4 closes it (2026-11-03)
 - [x] **Matthew's OK first**: play a recording through his speakers or headphones (OK given; done, above)
 - [x] Which zoom by default at 100% scaling: 2 (Matthew's pick); 3 at 150%, 4 at 200%; `--zoom 1` for 3.1's own size
+- [x] Level meter (Matthew asked): two bars in the wave box while recording or playing; read -30.0 dBFS for the -30 dBFS test beep
+- [ ] **Matthew**: does the meter look right where it is (wave box edges), and move right with his voice?
 
 ## Surfaced in Phase 3
 - [ ] Open and Save As use Windows 11's own file dialogs. A 3.1-style one (File Name list, Directories, Drives) would fit Phase 5's dialogs, if wanted

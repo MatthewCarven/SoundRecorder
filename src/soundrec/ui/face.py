@@ -19,7 +19,8 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .fonts import sans_serif, system_font
-from .raster import BLACK, DARK, GREEN, GREY, NAVY, WHITE, Surface, bitmap
+from .meter import FLOOR_DB
+from .raster import BLACK, DARK, GREEN, GREY, NAVY, RED, WHITE, YELLOW, Surface, bitmap
 
 WIDTH, HEIGHT = 317, 169
 
@@ -44,6 +45,11 @@ BUTTONS = dict(zip(BUTTON_NAMES, [(12, 140, 67, 162), (71, 140, 126, 162), (131,
 
 MENU_TEXT_X = 9   # the first title's text
 MENU_GAP = 16     # between one title's text and the next
+
+# The level meter (ours, not 3.1's): two bars in the wave box, three rows each.
+METER_ROWS = 3
+METER_YELLOW_DB = -12.0
+METER_RED_DB = -3.0
 
 
 def _left(tip: int):
@@ -122,6 +128,7 @@ class FaceState:
     thumb: float = 0.0              # 0 (start) to 1 (end)
     scroll_down: str | None = None  # "left" or "right" while held
     trace: np.ndarray | None = None  # one sample per wave-box column, -1 to 1; None: a flat line
+    meter: tuple | None = None      # ((left, right) dBFS, (left, right) hold dBFS); None: no bars
     enabled: dict[str, bool] = field(default_factory=lambda: {
         "rewind": False, "forward": False, "play": False, "stop": False, "record": True})
     pressed: str | None = None      # a button held down
@@ -241,17 +248,41 @@ def _client(s: Surface, state: FaceState) -> None:
         _centred(s, label, box, box[1] + 5, name)
         _centred(s, label, box, box[1] + 21, seconds_text(seconds))
 
-    _wave(s, state.trace)
+    _wave(s, state.trace, state.meter)
     _scrollbar(s, state)
     for name in BUTTON_NAMES:
         _button(s, name, state)
 
 
-def _wave(s: Surface, trace) -> None:
+def meter_column(db: float, width: int) -> int:
+    """How many of the bar's `width` columns a level lights: FLOOR_DB to 0 dBFS."""
+    return min(max(round((db - FLOOR_DB) / -FLOOR_DB * width), 0), width)
+
+
+def _meter(s: Surface, x0: int, x1: int, y0: int, y1: int, db: float, hold: float) -> None:
+    """One bar, lit from the left: green, yellow from -12 dBFS, red from -3."""
+    width = x1 - x0 + 1
+    lit = meter_column(db, width)
+    zones = [(0, meter_column(METER_YELLOW_DB, width), GREEN),
+             (meter_column(METER_YELLOW_DB, width), meter_column(METER_RED_DB, width), YELLOW),
+             (meter_column(METER_RED_DB, width), width, RED)]
+    for start, end, colour in zones:
+        s.fill(x0 + start, y0, x0 + min(end, lit) - 1, y1, colour)
+    mark = meter_column(hold, width) - 1
+    if hold > FLOOR_DB and mark >= 0:
+        colour = next(c for start, end, c in zones if start <= mark < end)
+        s.vline(x0 + mark, y0, y1, colour)
+
+
+def _wave(s: Surface, trace, meter=None) -> None:
     x0, y0, x1, y1 = WAVE
     s.sunken(x0, y0, x1, y1)
     ix0, iy0, ix1, iy1 = x0 + 1, y0 + 1, x1 - 1, y1 - 1
     s.fill(ix0, iy0, ix1, iy1, BLACK)
+    if meter is not None:  # left along the top edge, right along the bottom, under the trace
+        (left, right), (left_hold, right_hold) = meter
+        _meter(s, ix0, ix1, iy0, iy0 + METER_ROWS - 1, left, left_hold)
+        _meter(s, ix0, ix1, iy1 - METER_ROWS + 1, iy1, right, right_hold)
     middle, reach = (iy0 + iy1) // 2, (iy1 - iy0) // 2
     if trace is None or not len(trace):
         s.hline(ix0, ix1, middle, GREEN)
