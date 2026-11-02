@@ -2,9 +2,9 @@
 
 A sound recorder for Windows that will look and behave like the Windows 3.1 one,
 over every Windows audio API, in every format. [PLAN.md](PLAN.md) has the design
-and the phases. Done so far: Phase 1 (finding devices and what they really do) and
-Phase 2 (the recording engine, driven from the command line). The window comes in
-Phase 3.
+and the phases. Done so far: Phase 1 (finding devices and what they really do),
+Phase 2 (the recording engine, driven from the command line), and most of Phase 3
+(the window: recording, File, the menus; playback written but not yet heard).
 
 ## Set up
 
@@ -15,7 +15,34 @@ python -m venv .venv
 
 Python 3.12 or later (built on 3.14). Tests: `.venv\Scripts\python -m pytest`.
 
-## Use
+## The window
+
+```
+.venv\Scripts\pythonw -m soundrec.ui [--zoom 2] [--device TEXT] [--api API]
+sound-recorder gui [--zoom 2] [--device TEXT] [--api API]
+```
+
+The Windows 3.1 Sound Recorder, drawn pixel for pixel (its layout was measured
+from a 3.1 screenshot, and it matches it exactly) in the fonts Windows still
+ships: the System font and MS Sans Serif, read straight from their `.fon` files.
+`--zoom 2` doubles every pixel; the default is 1 at 100% display scaling, 2 from
+150%. It records from Windows' default recording device over WASAPI shared mode,
+or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
+
+- **The buttons**: rewind, forward, play, stop, record. Recording starts at the
+  position and records over what follows, as in 3.1; the wave box shows what's
+  coming in. The scrollbar moves the position (arrows 0.1 s, the trough 1 s).
+- **File**: New, Open (anything libsndfile reads), Save, Save As (the extension
+  picks the format: WAV, FLAC, MP3, Ogg, Opus, AIFF...), Revert, Exit.
+- **Device > Refresh Devices** looks again; plugging a device in does it too.
+  Edit and Effects come in Phase 4, the Device dialogs in Phase 5.
+- The caption drags the window; the minimize arrow, the taskbar button and
+  Alt+Tab work as for any window. The control-menu box opens 3.1's control menu
+  (double-click closes). Menus work with the mouse (press and drag, or click) and
+  the keyboard (Alt or F10, the arrows, Enter, the underlined letters, Alt+letter,
+  Alt+Space for the control menu, Esc).
+
+## The command line
 
 ```
 sound-recorder [--list] [--probe] [--device TEXT] [--outputs] [--all]

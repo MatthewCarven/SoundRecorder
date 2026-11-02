@@ -136,7 +136,16 @@ NAudio has no DirectSound capture and would need two separate encoder packages.
   bar and drop-downs are ours too (small borderless popups), with keyboard mnemonics.
 - **Font**: Windows still ships the old bitmap System font, and Tk draws through GDI,
   so it should render. That gets checked first in Phase 3. If it fails, the fallback
-  is a pixel font drawn from bitmaps.
+  is a pixel font drawn from bitmaps. **Checked (Phase 3)**: Tk renders it exactly
+  (four colours, no smoothing). But GDI picks a raster font's size itself, so at 2x
+  the labels' MS Sans Serif would switch to its 18-point design. So the glyphs are
+  read from Windows' own `vgasys.fon` and `sserife.fon`, and the whole window is
+  drawn into a pixel buffer shown as one Tk image (`ui/fonts.py`, `ui/raster.py`).
+- **Measured, not remembered** (Phase 3): the layout comes from a 640x480 3.1
+  screenshot. The window is 317 x 169; the labels are MS Sans Serif 8 ("Stopped" in
+  GDI's made-up bold); menus are flat with no shadow; disabled glyphs go through a
+  checkerboard lined up with each button. Drawn inactive with 3.1's menus, ours
+  matches it pixel for pixel. Effects' mnemonic is the s.
 - **Menus, as in 3.1**, plus one of ours:
   - File: New, Open..., Save, Save As..., Revert..., Exit
   - Edit: Insert File..., Mix with File..., Delete Before Current Position, Delete
@@ -169,7 +178,10 @@ take from the ZOOM over ASIO, resampled 48→44.1 kHz, has no dropouts.
 
 **Phase 3: the 3.1 window.** Font check first. Then the frame, the menus, the
 waveform display, the scrollbar, the buttons, playback, and File New, Open, Save,
-Save As, Revert. **Done when** Matthew says it looks right.
+Save As, Revert. **Done when** Matthew says it looks right. **Built 2026-11-03**
+(WORKLOG): all of it, recording checked through the window; waiting on Matthew's
+look, his try of the frame (taskbar, Alt+Tab, minimize, drag), and his OK to test
+playback on his speakers. Open and Save As use Windows' own file dialogs for now.
 
 **Phase 4: Edit and Effects.** The four 3.1 Edit items and the six Effects, on the
 working copy, with undo (Revert reloads the saved file, as in 3.1). Inserted and
@@ -217,6 +229,9 @@ format, folder), and a smoke test of the built exe.
   once, at record time. Effects then re-encode from the lossless working copy on
   Save, never from the MP3.
 - **`overrideredirect` quirks** (taskbar, Alt+Tab, Win+D). These have known ctypes
-  fixes, but they're fiddly. Phase 3 starts with them.
+  fixes, but they're fiddly. Phase 3 starts with them. Done in Phase 3
+  (`ui/window.py`): WS_EX_APPWINDOW for the taskbar and Alt+Tab, WS_MINIMIZEBOX and
+  ShowWindow for minimizing, WM_NCLBUTTONDOWN for dragging; menus in a
+  WS_EX_NOACTIVATE popup moved with SetWindowPos (Tk dropped its first move).
 - **Licences.** libsndfile, LAME, PortAudio and ffmpeg are LGPL or GPL builds. Fine
   for personal use; worth a look only if the exe is ever given away.

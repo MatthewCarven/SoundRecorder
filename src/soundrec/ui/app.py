@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import os
 import queue
+import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
@@ -30,6 +31,7 @@ PAGE_SECONDS = 1.0     # one click in the scrollbar's trough
 TICK_MS = 40           # redraws while recording or playing
 IDLE_TICK_MS = 100
 REPEAT_DELAY_MS, REPEAT_MS = 400, 60
+GIL_SWITCH_SECONDS = 0.0005
 
 OPEN_TYPES = [("Sounds", "*.wav *.flac *.mp3 *.ogg *.oga *.opus *.aif *.aiff *.aifc *.au *.snd "
                          "*.caf *.w64 *.rf64 *.voc"), ("All files", "*.*")]
@@ -69,6 +71,10 @@ def build_menus() -> list[Menu]:
 
 class App:
     def __init__(self, zoom: int | None = None, device: str | None = None, api: str | None = None):
+        # Capture callbacks need the GIL, the H2n's over ASIO every 1.3 ms, and
+        # Python lets a busy thread keep it for 5 ms. Painting at 25 fps made a
+        # stand-in callback up to 2.6 ms late; asking every 0.5 ms, 1.5 at worst.
+        sys.setswitchinterval(GIL_SWITCH_SECONDS)
         dpi_aware()
         self.root = root = tk.Tk()
         root.withdraw()

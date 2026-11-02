@@ -195,3 +195,65 @@ used. `h2n_clock.py` now takes device names and finds either mode's by default.
   2-4 0.44, the opposite corners 0.13 and 0.21. Two stereo pairs, 1 and 3 on one
   side, 2 and 4 on the other: the front XY and rear MS sets, presumably. Which pair
   is which needs sound from known directions.
+
+## 2026-11-03: Phase 3, the 3.1 window
+
+A side session from the Phase 2 one. New package `soundrec.ui`: `fonts.py`,
+`raster.py`, `face.py`, `menus.py`, `window.py`, `dialog.py`, `document.py`,
+`audio.py`, `app.py`. `sound-recorder gui` or `python -m soundrec.ui` opens it.
+189 tests (53 new), 4.4 s.
+
+**Font check.** Tk resolves "System" to the bitmap face (16 px, bold) and draws it
+exactly: an off-screen grab showed four colours, no smoothing; asking for 32 px
+pixel-doubles it. But GDI picks a raster font's size itself, and MS Sans Serif
+(sserife.fon) has its own 10-24 point designs, so a 2x window would get a
+different font. So `fonts.py` reads the glyphs out of the `.fon` files (NE
+resources holding FNT bitmaps), synthesising bold as GDI does (drawn twice, a
+pixel apart), and the window is drawn into a numpy buffer handed to Tk as one PPM
+image. That also lets tests draw the whole window with no window.
+
+**The look, measured.** A 640x480 screenshot of the real 3.1 Sound Recorder
+(toastytech.com's GUI gallery), read pixel by pixel in the browser: 317 x 169, a
+1-pixel border, 18-pixel caption and menu bar, a sunken status box ("Stopped" in
+MS Sans Serif 8 bold, which I'd have guessed was System), Position / wave / Length
+panels in MS Sans Serif 8, the scrollbar, five 56 x 23 buttons. Disabled glyphs
+are a checkerboard of the solid ones. Static text sits a pixel left of centre; the
+caption's doesn't. A 3.1 control-menu screenshot gave the menus: flat white, no
+shadow, 18-pixel items with the text at the top, 7-pixel separators, the
+accelerator column 8 pixels after the widest label, disabled text #C0C0C0, and the
+mnemonic underline a pixel left except under a first letter. Drawn inactive with
+3.1's menus, `face.paint` matched the screenshot in every visible pixel (53,573;
+the first try was off by 183, all the checkerboard's phase on two buttons: each
+3.1 button was a child window, so the pattern lines up with each button's corner).
+Effects' mnemonic turned out to be the s.
+
+**The frame.** Tk makes an overrideredirect window a tool window: no taskbar
+button, no Alt+Tab, no minimize. `window.py` swaps WS_EX_TOOLWINDOW for
+WS_EX_APPWINDOW and adds WS_MINIMIZEBOX, then hides and reshows it so the taskbar
+notices; minimizing is ShowWindow, dragging is WM_NCLBUTTONDOWN on HTCAPTION.
+Checked in code (styles set, minimize and restore work); the taskbar and Alt+Tab
+want Matthew's eyes. Menus open in a second window with WS_EX_NOACTIVATE, so the
+caption stays active and keys keep coming. Tk activates any window it creates
+(even withdrawn) and, inside the app, dropped the popup's first `wm geometry` move
+while taking its size (plain Tk didn't, in four variants); SetWindowPos moves it.
+
+**Checked without disturbing Matthew**: the app run with every window at alpha 0,
+the foreground handed back at once, and each window grabbed with
+PrintWindow(PW_RENDERFULLCONTENT), which reads a window's own surface (an
+off-screen window paints nothing, so grabs came back black until it sat on screen,
+invisible). Snapshots of every menu, the control menu, recording, stopped.
+Recording through it from Stereo Mix (WASAPI): 3 s gave 144,480 frames at 48 kHz;
+1 s more at the start recorded over it, length unchanged; Exit asked to save and
+deleted the working copy. The default device it picked is WASAPI "Microphone
+(H2n)" (4-channel mode); the first scan took 0.5 s.
+
+**The GIL.** An ASIO callback at the H2n's 64 frames needs the GIL every 1.3 ms,
+and Python lets a busy thread keep it 5 ms. A stand-in thread waking every 1.3 ms
+was up to 2.6 ms late while the window painted at 25 fps (a full 2x paint takes
+5.2 ms), 32 times past 1.3 ms in 5 s; with `sys.setswitchinterval(0.0005)` 1.5 ms
+at worst, once. The window sets it. The H2n itself can't be tried: 4-channel mode
+has no ASIO.
+
+**Not done**: playback is written (WASAPI shared with auto_convert, so the device
+keeps its own rate) and tested against a fake PortAudio, but not heard: it waits
+for Matthew's OK. Open and Save As use Windows' own file dialogs.

@@ -38,7 +38,7 @@ See PLAN.md for the why.
 ## Surfaced in Phase 1
 - [x] **H2n sample-rate bug**: a format query can leave it at the wrong rate, so it sounds deep until replugged (Matthew; Audacity does it). The clock check found it (Phase 2, 2026-11-03): opening its playback endpoint at 48 kHz moves its one clock there, and the capture side, labelled 44.1 kHz, stays at 48 kHz until replugged. ASIO at 48 kHz didn't do it. Whether the probe's 48 kHz checks on the capture side can do it too wasn't tried; with both endpoints on one rate it shouldn't matter
 - [ ] Unplugging the H2n marked its render endpoint not present at once, but its capture endpoint only 100 s later (21:46:46 / 21:48:26). The rescan saw the device gone straight away, but a capture-only USB mic might be noticed late. Try an `IMMNotificationClient` if it matters
-- [ ] Scan on a background thread in the window. A run usually takes 2-5 s (PortAudio itself ~1 s), but two runs once took 38 s while the laptop was busy, cause unknown
+- [x] Scan on a background thread in the window. A run usually takes 2-5 s (PortAudio itself ~1 s), but two runs once took 38 s while the laptop was busy, cause unknown. Done in Phase 3 (`ui/audio.py`: one thread for every scan, so PortAudio starts and stops on the same one); the window's first scan took 0.5 s
 - [ ] "ZOOM H and F Series Async ASIO" won't load (CoCreateInstance: E_OUTOFMEMORY); PortAudio skips it too. Probably only works with the device in another mode
 - [ ] WDM-KS lists the Realtek's "PC Speaker" reference pins as inputs (48-192 kHz). They're real, but confusing in a device list: label or hide them in the dialog
 
@@ -47,7 +47,7 @@ See PLAN.md for the why.
 - [x] **H2n deep-voices bug: cause found** (2026-11-03, `scripts/h2n_clock.py --play 48000`): capture alone 44,098 frames/s; with silence playing to its playback endpoint at 48 kHz, 48,000 frames/s, and still 48,000 after the playback stopped. One clock for both directions, and Windows has the two endpoints at different rates. Cure: same rate on both (Matthew, below)
 - [ ] **The H2n's ASIO driver delivers 21,381 frames/s**: one 64-frame buffer every 3.00 ms, at 44.1 and 48 kHz, with any block size, even from a bare callback. Over half the audio is lost. Its only buffer size is 64. Look for a buffer setting in the driver's own control panel (IASIO::controlPanel, vtable slot 21, could open it from asio.py); otherwise the Phase 5 dialog should warn against ASIO for it
 - [ ] Ten-minute take from the H2n: blocked over ASIO (above) and WASAPI exclusive (the PortAudio bug). Over WASAPI shared it's the same path as the Stereo Mix take, which passed
-- [ ] Phase 3: with the H2n's 64-frame ASIO buffer the callback wants the GIL every 1.3 ms; check for overflows with the window drawing (the CLI's main thread just sleeps)
+- [ ] Phase 3: with the H2n's 64-frame ASIO buffer the callback wants the GIL every 1.3 ms; check for overflows with the window drawing (the CLI's main thread just sleeps). **Half done**: a stand-in thread waking every 1.3 ms was up to 2.6 ms late while the window painted at 25 fps (32 times over 1.3 ms in 5 s); with Python's switch interval at 0.5 ms (the window sets it), 1.5 ms at worst. The real test needs the H2n back in stereo mode (4-channel mode has no ASIO), and its ASIO driver loses half the audio anyway, so the clock check stops such a take after 2 s
 - [x] H2n in 4-channel surround mode: Windows' own USB driver, "Microphone (H2n)" 4 ch 24-bit, no ASIO. Its endpoints came up at 44.1/48 kHz, so Matthew set "Headphones (H2n)" to 44.1 kHz 24-bit too (2026-11-03); the clock then held with playback running
 - [x] Windows' "audio enhancements" on Microphone (H2n) collapsed its four channels into one copied signal in shared mode (WASAPI, MME, DirectSound). Unticked by Matthew; WDM-KS bypasses them anyway
 - [ ] The Phase 5 dialog could warn when a multichannel device's channels arrive identical (enhancements on, or a mono device posing as stereo): `h2n_clock.py`'s correlation check, run for a second
@@ -56,11 +56,27 @@ See PLAN.md for the why.
 - [ ] WAV stops at 4 GB (about 6.7 hours of 44.1 kHz 16-bit stereo; 3.4 h of float): Phase 5's Save could switch to RF64 past that. The working copy has no such limit
 
 ## Phase 3: the 3.1 window
-- [ ] Bitmap System font in Tk: works or not (pixel-font fallback)
-- [ ] `overrideredirect` frame + taskbar / Alt+Tab / minimize fixes
-- [ ] Own menu bar and drop-downs
-- [ ] Waveform box, Position / Length, scrollbar, five buttons, level display
-- [ ] Playback; File New / Open / Save / Save As / Revert
+- [x] Bitmap System font in Tk: works, pixel-exact. Glyphs read from vgasys.fon / sserife.fon anyway, so 2x stays exact
+- [x] `overrideredirect` frame + taskbar / Alt+Tab / minimize fixes (styles checked in code; needs Matthew's hands, below)
+- [x] Own menu bar and drop-downs, mouse and keyboard, control menu
+- [x] Waveform box, Position / Length, scrollbar, five buttons, live trace while recording
+- [x] Recording through the window (Stereo Mix, 3 s, then 1 s over the start: right lengths, no takes left behind)
+- [x] File New / Open / Save / Save As / Revert; 3.1-style message boxes
+- [x] Device scan on a background thread; hot-plug and Refresh Devices rescan when nothing's open
+- [x] Playback written (WASAPI shared, Windows converts the rate), tested against a fake PortAudio only
+- [ ] **Matthew**: does it look right? (`.venv\Scripts\pythonw -m soundrec.ui`, try `--zoom 2`)
+- [ ] **Matthew**: taskbar button, Alt+Tab, the minimize arrow, clicking the taskbar button to minimize and restore, dragging the caption, Win+D
+- [ ] **Matthew's OK first**: play a recording through his speakers or headphones
+- [ ] Which zoom by default at 100% scaling: 1 (3.1's size, small on 1080p) or 2
+
+## Surfaced in Phase 3
+- [ ] Open and Save As use Windows 11's own file dialogs. A 3.1-style one (File Name list, Directories, Drives) would fit Phase 5's dialogs, if wanted
+- [ ] "Switch To..." in the control menu opens Task View (`shell:::{3080F90E-...}`): untried
+- [ ] The app's taskbar icon is Tk's feather until Phase 6's icon
+- [ ] Playback reads the working copy through a memory map in the callback; a page fault there could glitch on a slow disk. A read-ahead thread if it ever does
+- [ ] Recording over the middle of a long sound copies the new part in at Stop (disk speed: about 4 s for 3 hours of stereo)
+- [ ] Keyboard focus on the buttons (Tab, then Space) works but starts on none; 3.1's starting focus unknown
+- [ ] The disabled record button is drawn grey: 3.1's checkerboard would leave the microphone unchanged (every pixel of it falls on the same squares)
 
 ## Phase 4: Edit and Effects
 - [ ] Insert File, Mix with File, Delete Before / After Current Position
