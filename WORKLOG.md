@@ -304,3 +304,7 @@ ran fine.
 Fix: the window drags itself, a SetWindowPos per mouse move, the caption kept below
 the top of the screen; the message boxes' caption too. Synthetic Tk mouse events on
 the invisible window: dragged by 80,40 for 80,40 asked, the message box by -30,60.
+Matthew then dragged it for real: fine, and Alt+F4 closed it.
+
+He liked it at 2x, so 2x is the default at 100% scaling (3x at 150%, 4x at 200%;
+`--zoom 1` for 3.1's own size). **Phase 3 done.** 191 tests.

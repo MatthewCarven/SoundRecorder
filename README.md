@@ -3,8 +3,8 @@
 A sound recorder for Windows that will look and behave like the Windows 3.1 one,
 over every Windows audio API, in every format. [PLAN.md](PLAN.md) has the design
 and the phases. Done so far: Phase 1 (finding devices and what they really do),
-Phase 2 (the recording engine, driven from the command line), and most of Phase 3
-(the window: recording, File, the menus; playback written but not yet heard).
+Phase 2 (the recording engine, driven from the command line), and Phase 3 (the
+window: recording, playback, File, the menus). Next: Edit and Effects.
 
 ## Set up
 
@@ -18,15 +18,15 @@ Python 3.12 or later (built on 3.14). Tests: `.venv\Scripts\python -m pytest`.
 ## The window
 
 ```
-.venv\Scripts\pythonw -m soundrec.ui [--zoom 2] [--device TEXT] [--api API]
-sound-recorder gui [--zoom 2] [--device TEXT] [--api API]
+.venv\Scripts\pythonw -m soundrec.ui [--zoom N] [--device TEXT] [--api API]
+sound-recorder gui [--zoom N] [--device TEXT] [--api API]
 ```
 
 The Windows 3.1 Sound Recorder, drawn pixel for pixel (its layout was measured
 from a 3.1 screenshot, and it matches it exactly) in the fonts Windows still
 ships: the System font and MS Sans Serif, read straight from their `.fon` files.
-`--zoom 2` doubles every pixel; the default is 1 at 100% display scaling, 2 from
-150%. It records from Windows' default recording device over WASAPI shared mode,
+Every pixel is doubled by default at 100% display scaling (3x at 150%, 4x at
+200%); `--zoom 1` shows 3.1's own 317 x 169. It records from Windows' default recording device over WASAPI shared mode,
 or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
 
 - **The buttons**: rewind, forward, play, stop, record. Recording starts at the

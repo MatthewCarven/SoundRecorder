@@ -178,10 +178,11 @@ take from the ZOOM over ASIO, resampled 48→44.1 kHz, has no dropouts.
 
 **Phase 3: the 3.1 window.** Font check first. Then the frame, the menus, the
 waveform display, the scrollbar, the buttons, playback, and File New, Open, Save,
-Save As, Revert. **Done when** Matthew says it looks right. **Built 2026-11-03**
-(WORKLOG): all of it, recording checked through the window; waiting on Matthew's
-look, his try of the frame (taskbar, Alt+Tab, minimize, drag), and his OK to test
-playback on his speakers. Open and Save As use Windows' own file dialogs for now.
+Save As, Revert. **Done when** Matthew says it looks right. **Done 2026-11-03**
+(WORKLOG): recording and playback checked through the window (playback by
+loopback, with Matthew's OK), the frame tried by Matthew (a caption-drag crash
+found and fixed), and he liked it at 2x, now the default. Open and Save As use
+Windows' own file dialogs for now.
 
 **Phase 4: Edit and Effects.** The four 3.1 Edit items and the six Effects, on the
 working copy, with undo (Revert reloads the saved file, as in 3.1). Inserted and

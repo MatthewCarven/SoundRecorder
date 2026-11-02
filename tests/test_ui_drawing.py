@@ -164,3 +164,9 @@ def test_hits():
 
 def test_bitmap():
     assert bitmap("#.", ".#").tolist() == [[True, False], [False, True]]
+
+
+def test_the_default_zoom_doubles_at_100_percent():
+    from soundrec.ui.window import default_zoom
+
+    assert [default_zoom(dpi) for dpi in (96, 120, 144, 192)] == [2, 2, 3, 4]

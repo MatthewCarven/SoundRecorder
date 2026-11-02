@@ -78,9 +78,10 @@ def screen_dpi() -> int:
         return 96
 
 
-def default_zoom() -> int:
-    """Whole-number scaling: 1 at 100% (96 dpi), 2 from 150% up."""
-    return max(1, round(screen_dpi() / 96 + 0.01))
+def default_zoom(dpi: int | None = None) -> int:
+    """Whole-number scaling: 2 at 100% (96 dpi), Matthew's pick (3.1's own
+    317 x 169 is small on a 1080p screen); 3 at 150%, 4 at 200%."""
+    return max(1, round(2 * (dpi or screen_dpi()) / 96))
 
 
 class PixelWindow:

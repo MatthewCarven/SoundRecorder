@@ -716,7 +716,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="sound-recorder gui",
                                      description="The Sound Recorder window.")
     parser.add_argument("--zoom", type=int, choices=(1, 2, 3, 4),
-                        help="pixel size (default: 1 at 100%% display scaling, 2 from 150%%)")
+                        help="pixel size (default: 2 at 100%% display scaling, 3 at 150%%; "
+                             "1 is 3.1's own size)")
     parser.add_argument("--device", metavar="TEXT",
                         help="record from the device whose name contains TEXT "
                              "(default: Windows' default recording device)")
