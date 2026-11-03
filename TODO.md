@@ -79,7 +79,7 @@ See PLAN.md for the why.
 - [x] **Matthew**: try Record and Refresh Devices again: working fine (2026-11-03)
 - [x] File > Exit did nothing (Matthew). His window was found with its hidden menu popup as the active window; how it got there wasn't reproduced. Now the popup is truly hidden between menus, handed back at once if it's ever activated (so an open menu isn't closed under the click), keys reaching it go to the main window, and a message box gives the focus back when it closes
 - [ ] **Matthew**: File > Exit again (and say what he saw the first time, if he remembers)
-- Recording Device... and Output Format... are greyed on purpose: they're Phase 5's dialogs (Matthew asked; offered to bring them forward)
+- Recording Device... and Output Format... are greyed on purpose: they're Phase 5's dialogs (Matthew asked; offered to bring them forward, and he's keeping them for Phase 5)
 
 ## Surfaced in Phase 3
 - [ ] Open and Save As use Windows 11's own file dialogs. A 3.1-style one (File Name list, Directories, Drives) would fit Phase 5's dialogs, if wanted
