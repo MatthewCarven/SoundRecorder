@@ -65,7 +65,7 @@ See PLAN.md for the why.
 - [x] Device scan on a background thread; hot-plug and Refresh Devices rescan when nothing's open
 - [x] Playback written (WASAPI shared, Windows converts the rate), tested against a fake PortAudio only
 - [x] Playback heard (Matthew's OK, 2026-11-03): a -30 dBFS 997 Hz beep through the window to Headphones (Realtek), loopback-recorded. Pitch 997.00 Hz, level within 0.05 dB, onset ~35 ms after Play, position readout to the end. 7 plays: 6 clean (0 PortAudio underflows where counted, no slipped samples); 1 came back 89 ms long with a silent stretch, before anything was counted (below)
-- [ ] Did Matthew hear a hiccup in the third of the seven beeps (the first at 44.1 kHz)? If yes, it was playback; if not, likely soundcard's loopback padding
+- [x] Did Matthew hear a hiccup in the third of the seven beeps (the first at 44.1 kHz)? "Maybe, but only broken for a millisecond" (2026-11-03). An 89 ms gap would have been plain to hear, so most likely soundcard's loopback padding (below), not playback; not proven
 - [x] **Matthew**: does it look right? He liked it at 2x (2026-11-03)
 - [x] **Matthew**: taskbar button, Alt+Tab, the minimize arrow, clicking the taskbar button to minimize and restore, Win+D: all work (2026-11-03)
 - [x] Dragging the caption crashed the app (Matthew). Cause reproduced and fixed: the window moves itself now (WORKLOG)
@@ -83,7 +83,7 @@ See PLAN.md for the why.
 
 ## Surfaced in Phase 3
 - [ ] Open and Save As use Windows 11's own file dialogs. A 3.1-style one (File Name list, Directories, Drives) would fit Phase 5's dialogs, if wanted
-- [ ] "Switch To..." in the control menu opens Task View (`shell:::{3080F90E-...}`): untried
+- [x] "Switch To..." in the control menu opens Task View (`shell:::{3080F90E-...}`): **Matthew**: works perfectly (2026-11-03)
 - [ ] The app's taskbar icon is Tk's feather until Phase 6's icon
 - [ ] **soundcard's loopback makes up silence when packets are late**: if none arrive for 4 device periods (~40 ms), `_record_chunk` returns zeros for the time waited (mediafoundation.py:736-756), even while audio plays; the late packets still come after, so a loopback take gets longer with a silent stretch and nothing reported. One of seven test beeps came back 89 ms long that way (unattributed: playback underflows weren't counted yet). Options: count it as a discontinuity in LoopbackCapture, or our own WASAPI loopback capture
 - [ ] The Player counts PortAudio's underflows but the window doesn't show them
