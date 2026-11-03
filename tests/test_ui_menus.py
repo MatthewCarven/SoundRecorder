@@ -179,3 +179,81 @@ def test_the_apps_menus_are_3_1s_plus_device():
     for menu in build_menus():
         letters = [i.mnemonic for i in menu.items if not i.separator]
         assert len(letters) == len(set(letters)), menu.title
+
+
+def test_a_checked_item_gets_a_tick_in_the_margin():
+    from soundrec.ui.menus import CHECK, CHECK_X, CHECK_Y
+
+    menu = Menu("&Device", [Item("&Mono", "mono"), Item("&Stereo", "stereo", checked=True)])
+    s = paint_popup(menu)
+    _, _, tops = layout(menu)
+    h, w = CHECK.shape
+    for top, ticked in zip(tops, (False, True)):
+        box = s.pixels[top + CHECK_Y:top + CHECK_Y + h, CHECK_X:CHECK_X + w]
+        assert (np.all(box[CHECK] == BLACK, axis=-1).all() if ticked
+                else np.all(box == WHITE, axis=-1).all())
+    lit = paint_popup(menu, highlight=1)  # white on the highlight, like the text
+    box = lit.pixels[tops[1] + CHECK_Y:tops[1] + CHECK_Y + h, CHECK_X:CHECK_X + w]
+    assert np.all(box[CHECK] == WHITE, axis=-1).all()
+
+
+def test_the_device_menu_offers_mono_stereo_or_every_channel():
+    device = build_menus()[4]
+    commands = [i.command for i in device.items if not i.separator]
+    assert commands == ["device", "format", "channels-mono", "channels-stereo", "channels-all",
+                        "refresh"]
+
+
+def _app_without_a_window(device_channels):
+    """Just enough of the App for _sync: no Tk, no devices."""
+    import types
+
+    from soundrec.ui import face as F
+    from soundrec.ui.app import App
+    from soundrec.ui.document import Document
+    from soundrec.ui.meter import Meter
+
+    app = App.__new__(App)
+    app.menus = build_menus()
+    app.face = F.FaceState(menus=tuple(m.title for m in app.menus[1:]))
+    app.doc, app.position, app.recorder, app.player = Document(), 0, None, None
+    app.devices = types.SimpleNamespace(busy=False)
+    app.device = types.SimpleNamespace(channels=device_channels) if device_channels else None
+    app.meter, app.channels_wanted = Meter(), None
+    return app
+
+
+def ticked(app):
+    return [i.command for i in app.menus[4].items if i.checked]
+
+
+def test_channel_ticks_start_from_the_device():
+    assert ticked(_app_without_a_window(1)) == []  # nothing until _sync
+    for channels, choice in ((1, "channels-mono"), (2, "channels-stereo"), (4, "channels-stereo")):
+        app = _app_without_a_window(channels)
+        app._sync()
+        assert ticked(app) == [choice]
+    app._sync()
+    assert app.menus[4].item("channels-all").label == "&All 4 Channels"
+    assert app.menus[4].item("channels-all").enabled
+
+
+def test_all_channels_is_greyed_for_a_stereo_device():
+    app = _app_without_a_window(2)
+    app._sync()
+    item = app.menus[4].item("channels-all")
+    assert item.label == "&All Channels" and not item.enabled
+
+
+def test_picking_channels_moves_the_tick_until_theres_a_sound(monkeypatch):
+    import types
+
+    app = _app_without_a_window(4)
+    monkeypatch.setattr(app, "redraw", lambda: None, raising=False)
+    app.cmd_channels_all()
+    assert ticked(app) == ["channels-all"] and app.channel_choice == "all"
+    app.doc.take = types.SimpleNamespace(rate=48000, channels=4, frames=0,
+                                         read=lambda start, count: np.zeros((0, 4), np.float32))
+    app._sync()  # a sound fixes the channels: the choices go grey, the tick stays
+    assert ticked(app) == ["channels-all"]
+    assert not any(app.menus[4].item("channels-" + n).enabled for n in ("mono", "stereo", "all"))

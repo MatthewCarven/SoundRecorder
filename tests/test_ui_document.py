@@ -11,7 +11,7 @@ import soundfile as sf
 
 from soundrec.output import OutputSpec
 from soundrec.takes import Take
-from soundrec.ui.audio import DeviceList, PlaybackError, Player
+from soundrec.ui.audio import DeviceList, PlaybackError, Player, fold, playback_channels
 from soundrec.ui.document import Document
 
 
@@ -176,15 +176,34 @@ def test_playback_counts_the_underflows_portaudio_reports(fake_portaudio, monkey
     take.discard()
 
 
-def test_playback_takes_as_many_channels_as_the_device_has(fake_portaudio):
+def test_playback_mixes_four_channels_into_stereo_headphones(fake_portaudio):
     a = noise(500, channels=4)
     take = take_of(a)
     player = Player(take, types.SimpleNamespace(index=0, channels=2, name="Headphones"))
+    assert player.channels == 2
     player.start()
     player.finished.wait(5)
     player.stop()
-    assert np.array_equal(np.vstack(FakeStream.last.heard)[:500], a[:, :2])
+    heard = np.vstack(FakeStream.last.heard)[:500]
+    assert np.allclose(heard[:, 0], (a[:, 0] + a[:, 2]) / 2)  # 1 and 3 left
+    assert np.allclose(heard[:, 1], (a[:, 1] + a[:, 3]) / 2)  # 2 and 4 right
     take.discard()
+
+
+def test_how_many_channels_playback_opens():
+    assert playback_channels(2, 2) == 2
+    assert playback_channels(1, 2) == 1   # Windows copies mono to both sides
+    assert playback_channels(4, 2) == 2   # folded
+    assert playback_channels(4, 8) == 4   # a surround device takes them as they are
+    assert playback_channels(8, 6) == 2
+    assert playback_channels(3, 1) == 1
+
+
+def test_folding_odd_channels_left_and_even_right():
+    block = np.array([[0.1, 0.2, 0.3, 0.4, 0.5]], np.float32)
+    assert np.allclose(fold(block, 2), [[0.3, 0.3]])  # (0.1+0.3+0.5)/3, (0.2+0.4)/2
+    assert np.allclose(fold(block, 1), [[0.3]])
+    assert fold(block, 5) is block
 
 
 def test_playback_says_why_it_cant_start():

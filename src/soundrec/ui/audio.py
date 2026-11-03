@@ -7,9 +7,10 @@ started. Results go back through `notify`, which runs a function on the UI
 thread (Tk can only be touched from there).
 
 Playback goes to Windows' default playback device over WASAPI shared mode
-with Windows converting the rate and channels (auto_convert), so the device
-keeps its own format: the H2n's playback side stays at the rate its capture
-side runs at.
+with Windows converting the rate (auto_convert), so the device keeps its own
+format: the H2n's playback side stays at the rate its capture side runs at.
+A sound with more channels than the device has is mixed down here (fold), so
+the H2n's four channels all reach a pair of headphones.
 """
 
 from __future__ import annotations
@@ -80,6 +81,24 @@ class PlaybackError(Exception):
     pass
 
 
+def playback_channels(sound: int, device: int) -> int:
+    """Channels to open the device with: the sound's own if the device has
+    that many, else stereo (or mono, for a one-channel device) to fold into."""
+    device = max(device, 1)
+    return sound if sound <= device else min(device, 2)
+
+
+def fold(block: np.ndarray, channels: int) -> np.ndarray:
+    """Fit a block to `channels` outputs (from playback_channels): as it is
+    if it fits, else mixed, odd channels (1, 3...) left and even right, as
+    the meter shows them; all of them to one for a mono device."""
+    if block.shape[1] <= channels:
+        return block
+    if channels == 1:
+        return block.mean(axis=1, keepdims=True)
+    return np.column_stack((block[:, 0::2].mean(axis=1), block[:, 1::2].mean(axis=1)))
+
+
 class Player:
     """Plays a take from frame `start` to its end, on a thread of its own.
 
@@ -89,7 +108,7 @@ class Player:
 
     def __init__(self, take, device, start: int = 0):
         self.take, self.device = take, device
-        self.rate, self.channels = take.rate, min(take.channels, max(device.channels, 1))
+        self.rate, self.channels = take.rate, playback_channels(take.channels, device.channels)
         self.start_frame = self.sent = start
         self.end = take.frames
         self.latency = 0.0
@@ -137,7 +156,7 @@ class Player:
                     at = self.sent
                     n = max(min(frames, self.end - at), 0)
                     if n:
-                        outdata[:n] = data[at:at + n, :self.channels]
+                        outdata[:n] = fold(data[at:at + n], self.channels)
                     outdata[n:] = 0
                     self.sent = at + n
                     if self.sent >= self.end:

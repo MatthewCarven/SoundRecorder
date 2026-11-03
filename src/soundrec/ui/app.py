@@ -51,9 +51,14 @@ def error_log() -> Path:
     return default_dir().parent / "errors.log"
 
 
+CHANNEL_CHOICES = ("mono", "stereo", "all")
+
+
 def build_menus() -> list[Menu]:
     """The control menu, then the menu bar's, as in 3.1 plus our Device menu.
-    Edit and Effects come in Phase 4, the Device dialogs in Phase 5."""
+    Edit and Effects come in Phase 4, the Device dialogs in Phase 5. The
+    Device menu's channel choices are ticked, as 3.1's Clock ticked Analog
+    or Digital, rather than a submenu."""
     return [
         Menu(None, [Item("&Restore", "restore", enabled=False), Item("&Move", "move"),
                     Item("&Size", "size", enabled=False), Item("Mi&nimize", "minimize"),
@@ -75,6 +80,8 @@ def build_menus() -> list[Menu]:
                           Item("&Reverse", "reverse", enabled=False)]),
         Menu("&Device", [Item("&Recording Device...", "device", enabled=False),
                          Item("&Output Format...", "format", enabled=False), SEPARATOR,
+                         Item("&Mono", "channels-mono"), Item("&Stereo", "channels-stereo"),
+                         Item("&All Channels", "channels-all"), SEPARATOR,
                          Item("Re&fresh Devices", "refresh")]),
         Menu("&Help", [Item("&About Sound Recorder...", "about")]),
     ]
@@ -106,6 +113,7 @@ class App:
         self.wanted = (device, api)
         self.device = None         # the capture device recordings come from
         self.device_problem: str | None = None
+        self.channels_wanted: str | None = None  # a CHANNEL_CHOICES pick; None: the device's own
         self._inbox: queue.SimpleQueue = queue.SimpleQueue()
         self.devices = DeviceList(self._inbox.put)
         self._rescan_when_idle = False
@@ -177,6 +185,23 @@ class App:
         file_menu.item("save").enabled = file_menu.item("saveas").enabled = doc.take is not None
         file_menu.item("revert").enabled = doc.path is not None and doc.dirty
         device_menu.item("refresh").enabled = idle and not self.devices.busy
+        # The channels are a new sound's: once there's a sound, recordings take its.
+        available = self.device.channels if self.device is not None else 2
+        choice = self.channel_choice
+        for name in CHANNEL_CHOICES:
+            item = device_menu.item("channels-" + name)
+            item.checked = name == choice
+            item.enabled = idle and doc.take is None and (name != "all" or available > 2)
+        device_menu.item("channels-all").label = \
+            f"&All {available} Channels" if available > 2 else "&All Channels"
+
+    @property
+    def channel_choice(self) -> str:
+        """What a new sound records: the Device menu's tick. Until one is
+        picked, a mono device records mono and anything else stereo."""
+        if self.channels_wanted is not None:
+            return self.channels_wanted
+        return "mono" if self.device is not None and self.device.channels == 1 else "stereo"
 
     def _trace(self, at: int):
         """What the wave box shows: the sound at the position, or what's coming in."""
@@ -325,10 +350,15 @@ class App:
         from ..cli import exact_channels, native_rate, plan_channels
         from ..engine import Recorder
 
+        if self.doc.take is not None:
+            out, keep_all = self.doc.channels, False
+        else:
+            choice = self.channel_choice
+            out, keep_all = {"mono": (1, False), "stereo": (2, False), "all": (None, True)}[choice]
         try:
             capture_rate = native_rate(self.device)
             capture_channels, channels, pick = plan_channels(
-                self.device.channels, self.doc.channels, exact=exact_channels(self.device))
+                self.device.channels, out, keep_all=keep_all, exact=exact_channels(self.device))
             rec = Recorder(open_capture(self.device, capture_rate, capture_channels),
                            self.doc.rate or capture_rate, channels, pick,
                            meta={"device": self.device.key,
@@ -548,6 +578,20 @@ class App:
         if not self.busy and self.devices.refresh(rescan=True, then=self._refreshed):
             self._sync()
             self.redraw()
+
+    def _pick_channels(self, choice: str) -> None:
+        self.channels_wanted = choice
+        self._sync()
+        self.redraw()
+
+    def cmd_channels_mono(self) -> None:
+        self._pick_channels("mono")
+
+    def cmd_channels_stereo(self) -> None:
+        self._pick_channels("stereo")
+
+    def cmd_channels_all(self) -> None:
+        self._pick_channels("all")
 
     def _refreshed(self) -> None:
         """Refresh Devices asked for it, so say what was found."""

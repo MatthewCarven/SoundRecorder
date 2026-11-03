@@ -374,3 +374,21 @@ time. All seven clean: 0 underflows, no padding, onset 23-31 ms, every tone 1.48
 phase steps. The first 44.1 kHz play, the long one last time, was as clean as the
 rest. So the 89 ms stretch didn't come back; it stays unattributed, most likely
 soundcard's padding.
+
+## 2026-11-03: channels in the window
+
+Matthew asked how more than two channels are handled. The engine already did
+anything (keep all, pick, mix to mono, copy mono up; `rec --keep-all`, `--pick`),
+but the window kept the first two, and playback dropped channels 3 and up. His
+picks: a Channels choice in the Device menu now rather than waiting for Phase 5's
+dialog, and multichannel playback mixed into stereo.
+
+- Device menu: Mono, Stereo, All N Channels, with a tick on the current one (our
+  menus have no submenus; 3.1 ticked choices in place, as its Clock did Analog and
+  Digital). They set a new sound's channels; once a sound exists its channels are
+  fixed, as its rate is, and the choices go grey.
+- Playback (`ui/audio.py`): `playback_channels` opens the sound's own channel count
+  if the device has as many, else stereo; `fold` mixes odd channels left and even
+  right, the meter's split, averaged so it can't clip.
+- 206 tests (the menu tick's pixels, the ticks and greying through the App's own
+  `_sync` without a window, the fold). Not yet tried in the real window.

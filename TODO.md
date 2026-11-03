@@ -92,6 +92,13 @@ See PLAN.md for the why.
 - [ ] Keyboard focus on the buttons (Tab, then Space) works but starts on none; 3.1's starting focus unknown
 - [ ] The disabled record button is drawn grey: 3.1's checkerboard would leave the microphone unchanged (every pixel of it falls on the same squares)
 
+## Channels (Matthew, 2026-11-03: brought forward from Phase 5)
+- [x] Device menu: Mono / Stereo / All N Channels, ticked as 3.1 ticked its choices (no submenu). For a new sound only; once there's a sound, recordings take its channels and the choices go grey. Until one's picked, a mono device records mono and anything else stereo. Mono mixes the first two; All is greyed for devices with two or fewer
+- [x] Playback folds a sound with more channels than the device has: odd channels left, even right (as the meter shows them); everything to one for a mono device. A 4-channel H2n take on Headphones (Realtek) now plays all four
+- [ ] **Matthew**: try them in the window: Device > All 4 Channels with the H2n in 4-channel mode, record, play it back on headphones
+- [ ] The setting isn't remembered between runs (Phase 6's remembered settings)
+- [ ] Mono mixes channels 1 and 2 only. Mixing all four of the H2n's would be wrong for its MS pair (M and S aren't left and right) until Phase 5's picker knows which pair is which
+
 ## Phase 4: Edit and Effects
 - [ ] Insert File, Mix with File, Delete Before / After Current Position
 - [ ] Volume ±25%, Speed ±100%, Add Echo, Reverse

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from .face import strip_mnemonic
 from .fonts import system_font
 from .raster import BLACK, GREY, NAVY, WHITE, Surface
@@ -27,6 +29,15 @@ SEPARATOR_HEIGHT = 7
 TEXT_X = 16       # from the popup's left edge, border included
 ACCEL_GAP = 8     # between the widest label and the accelerator column
 RIGHT_MARGIN = 15  # after the widest text, border included
+CHECK_X, CHECK_Y = 4, 5  # the tick's top-left, from the item's
+CHECK = np.array([[c == "#" for c in row] for row in (
+    "......#",
+    ".....##",
+    "#...###",
+    "##.###.",
+    "#####..",
+    ".###...",
+    "..#....")])
 
 
 @dataclass
@@ -35,6 +46,7 @@ class Item:
     command: str | None = None  # None makes a separator
     accel: str = ""             # shown, not bound: the app binds its own keys
     enabled: bool = True
+    checked: bool = False       # a tick in the left margin
 
     @property
     def separator(self) -> bool:
@@ -100,6 +112,8 @@ def paint_popup(menu: Menu, highlight: int | None = None) -> Surface:
         if i == highlight:
             s.fill(1, top, width - 2, top + ITEM_HEIGHT - 1, NAVY)
             ink = WHITE if item.enabled else GREY
+        if item.checked:
+            s.mask(CHECK_X, top + CHECK_Y, CHECK, ink)
         text, mnemonic = strip_mnemonic(item.label)
         s.text(font, TEXT_X, top, text, ink, underline=mnemonic, underline_shift=-1)
         if item.accel:
