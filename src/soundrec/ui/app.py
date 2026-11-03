@@ -28,7 +28,7 @@ from .dialog import MessageBox
 from .document import Document
 from .menus import SEPARATOR, Item, Menu, Tracker, item_at, paint_popup
 from .meter import Meter
-from .window import AppWindow, PopupWindow, default_zoom, dpi_aware
+from .window import AppWindow, PopupWindow, activate, default_zoom, dpi_aware, foreground
 
 TRACE_SECONDS = 0.012  # the stretch of sound the wave box shows
 STEP_SECONDS = 0.1     # one click on a scroll arrow
@@ -583,19 +583,23 @@ class App:
             label.bind("<Motion>", self._motion)
             label.bind("<B1-Motion>", self._motion)
             label.bind("<ButtonRelease-1>", self._release)
-        self.root.bind("<KeyPress>", self._key)
-        self.root.bind("<KeyRelease>", self._key_up)
-        self.root.bind("<FocusIn>", lambda e: self.root.after(1, self._check_active))
-        self.root.bind("<FocusOut>", lambda e: self.root.after(1, self._check_active))
+        for top in (self.root, self.popup.top):  # keys reach the popup only if it's activated
+            top.bind("<KeyPress>", self._key)
+            top.bind("<KeyRelease>", self._key_up)
+            top.bind("<FocusIn>", lambda e: self.root.after(1, self._check_active))
+            top.bind("<FocusOut>", lambda e: self.root.after(1, self._check_active))
 
     def _check_active(self) -> None:
+        """Whether the window is the active one: another program or a message
+        box makes it inactive (white caption, menus closed). The menu popup
+        mustn't: should it ever be activated (it was once, on Matthew's
+        laptop, and File > Exit then did nothing, its menu closed by the
+        main window losing the focus), hand the activation straight back."""
         if self._closing:
             return
-        try:
-            focus = self.root.focus_get()  # None while another program has the focus
-            active = focus is not None and focus.winfo_toplevel() is self.root
-        except (KeyError, tk.TclError):
-            active = False
+        if foreground() == self.popup.hwnd:
+            activate(self.window.hwnd)
+        active = foreground() == self.window.hwnd
         if active != self.face.active:
             self.face.active = active
             if not active:

@@ -340,3 +340,24 @@ Checked on the H2n (1.5 s, discarded): 65,709 frames at 44.1 kHz, 2 ch, the mete
 at about -25 / -30 dBFS from the room; Refresh: "Found 22 recording devices.
 Recording from WASAPI: Microphone (H2n)."; a deliberate 1/0 in a callback landed in
 the log and a message box. 199 tests.
+
+### File > Exit did nothing (Matthew)
+
+Simulated (Tk event) clicks on File > Exit closed the window, with and without a
+recording to save. His running window (left open, a 2.6 s unsaved recording in it)
+told more: listing its windows showed **the hidden menu popup as the foreground
+window**, though it has WS_EX_NOACTIVATE and sat off screen. If a click on Exit
+activates the popup, the main window gets FocusOut, `_check_active` calls it
+inactive and closes the menus, and the release that would choose Exit finds no menu
+open: nothing happens. How the popup got activated wasn't reproduced: a message box
+closing handed the activation back to the main window here, and posted click
+messages don't reach Tk like real ones (Tk takes the pointer position from the real
+cursor), so they missed. Made safe however it happens: the popup is hidden with
+SW_HIDE between menus (shown with SWP_SHOWWINDOW|SWP_NOACTIVATE), so Windows can't
+hand it the activation; `_check_active` judges by the foreground window and hands
+the activation back from the popup at once; keys reaching the popup go to the same
+handlers; and a message box gives the focus back to the window when it closes.
+Checked by forcing the popup active with the File menu open: 0.15 s later the main
+window was active again, the menu still open, and Exit (by its mnemonic) closed the
+app. The menu, drag and Exit checks all still pass. Recording Device and Output
+Format are greyed on purpose (Phase 5); Matthew asked.

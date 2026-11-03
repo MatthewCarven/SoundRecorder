@@ -244,4 +244,8 @@ class MessageBox:
         top.focus_force()
         top.grab_set()
         top.wait_window()
+        try:  # back to the window that asked, not whatever Windows picks next
+            self._master.focus_force()
+        except tk.TclError:
+            pass
         return self.answer

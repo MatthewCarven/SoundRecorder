@@ -14,11 +14,13 @@ aborted ("PyEval_RestoreThread ... thread state is NULL"). Never start a
 Windows modal loop synchronously from a Tk callback; PostMessage it instead,
 so it runs from Tk's own event loop (the control menu's Move does).
 
-Menus open in a second, borderless window that never takes the focus
+Menus open in a second, borderless window that should never take the focus
 (WS_EX_NOACTIVATE), so the app's caption stays active and its keys keep
-coming while a menu is down, as in 3.1. It is shown once and then only
-moved: on screen to show, far off it to hide, because Tk activates a
-window whenever it maps one.
+coming while a menu is down, as in 3.1. Tk maps it once (Tk activates any
+window it maps); after that Windows shows and hides it, behind Tk's back,
+and a hidden window can't be handed the activation. On Matthew's laptop the
+popup still ended up the active window once, and the app hands it back
+whenever that happens (App._check_active).
 """
 
 from __future__ import annotations
@@ -33,12 +35,14 @@ WS_MINIMIZEBOX = 0x00020000
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_APPWINDOW = 0x00040000
 WS_EX_NOACTIVATE = 0x08000000
+SW_HIDE = 0
 SW_MINIMIZE = 6
 SW_RESTORE = 9
 WM_SYSCOMMAND = 0x0112
 SC_MOVE = 0xF010
 SM_YVIRTUALSCREEN = 77
 SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_NOACTIVATE, SWP_FRAMECHANGED = 0x1, 0x2, 0x4, 0x10, 0x20
+SWP_SHOWWINDOW = 0x40
 
 HWND_TOPMOST = wintypes.HWND(-1)
 OFF_SCREEN = -20000
@@ -57,6 +61,15 @@ _user32.IsIconic.argtypes = [wintypes.HWND]
 _user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
 _user32.GetForegroundWindow.restype = wintypes.HWND
 _user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+
+
+def foreground() -> int:
+    """The window Windows has active (keyboard input goes there)."""
+    return _user32.GetForegroundWindow() or 0
+
+
+def activate(hwnd: int) -> None:
+    _user32.SetForegroundWindow(hwnd)
 
 
 def dpi_aware() -> None:
@@ -176,28 +189,28 @@ class PopupWindow(PixelWindow):
         self._styled = False
 
     def prepare(self) -> None:
-        """Once it exists (after update_idletasks): never let it be activated."""
+        """Once it exists (after update_idletasks): never let it be activated,
+        and hide it until a menu opens."""
         if not self._styled:
             self._style(GWL_EXSTYLE, add=WS_EX_NOACTIVATE)
             self._styled = True
+            _user32.ShowWindow(self.hwnd, SW_HIDE)
 
     def place(self, surface, x_root: int, y_root: int) -> None:
         if not self._styled:
             self.top.update_idletasks()
             self.prepare()
         self.show(surface)
-        # Tk sizes the window; Windows moves it. Inside the app, Tk's first
-        # `wm geometry` move of this window was dropped (the size took, the
-        # off-screen position stayed), so the move bypasses Tk.
+        # Tk sizes the window; Windows moves and shows it. Inside the app, Tk's
+        # first `wm geometry` move of this window was dropped (the size took,
+        # the off-screen position stayed), so the move bypasses Tk.
         self.top.geometry(f"{surface.width * self.zoom}x{surface.height * self.zoom}")
         self.top.update_idletasks()
-        self._move(x_root, y_root)
+        _user32.SetWindowPos(self.hwnd, HWND_TOPMOST, x_root, y_root, 0, 0,
+                             SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW)
         self.visible = True
 
     def hide(self) -> None:
         if self.visible:
-            self._move(OFF_SCREEN, OFF_SCREEN)
+            _user32.ShowWindow(self.hwnd, SW_HIDE)
             self.visible = False
-
-    def _move(self, x: int, y: int) -> None:
-        _user32.SetWindowPos(self.hwnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE)
