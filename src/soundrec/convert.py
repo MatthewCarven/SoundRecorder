@@ -69,6 +69,20 @@ class ChannelMap:
         return np.repeat(picked, self.outputs, axis=1)
 
 
+def fit_channels(block: np.ndarray, channels: int) -> np.ndarray:
+    """A block with `channels` channels, from one with any number. Fewer:
+    output j is the average of inputs j, j + channels, j + 2 x channels...
+    (to stereo, odd channels left and even right, as the meter shows them;
+    to mono, all of them). More: the inputs repeat across the outputs (mono
+    to both sides, stereo to L R L R)."""
+    have = block.shape[1]
+    if have == channels:
+        return block
+    if have > channels:
+        return np.column_stack([block[:, j::channels].mean(axis=1) for j in range(channels)])
+    return block[:, [j % have for j in range(channels)]]
+
+
 class Resampler:
     """soxr's streaming resampler, or nothing at all when the rates match."""
 

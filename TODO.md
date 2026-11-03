@@ -99,9 +99,14 @@ See PLAN.md for the why.
 - [ ] The setting isn't remembered between runs (Phase 6's remembered settings)
 - [ ] Mono mixes channels 1 and 2 only. Mixing all four of the H2n's would be wrong for its MS pair (M and S aren't left and right) until Phase 5's picker knows which pair is which
 
-## Phase 4: Edit and Effects
-- [ ] Insert File, Mix with File, Delete Before / After Current Position
-- [ ] Volume ±25%, Speed ±100%, Add Echo, Reverse
+## Phase 4: Edit and Effects (built 2026-11-03)
+- [x] Insert File, Mix with File (converted to the sound's rate and channels: `fit_channels`, then soxr; into no sound, the file becomes it, Untitled), Delete Before / After Current Position (they ask first)
+- [x] Volume +25% / back (x1.25, /1.25: each undoes the other; float working copy, clipped only on save), Speed x2 / /2 (soxr resample, pitch and all, position follows the sound), Add Echo (one repeat, 0.25 s, -6 dB; 3.1's figures unknown), Reverse
+- [x] Each edit writes a new take and swaps it in, so a failure leaves the sound alone; the old take is deleted. Undo is Revert, as in 3.1
+- [x] Tests: every edit across block edges, the window's commands without a window (227 in all)
+- [ ] **Matthew**: try them in the window. Does the echo sound like 3.1's? (delay and level are guesses: `ECHO_SECONDS`, `ECHO_LEVEL` in `edits.py`)
+- [ ] Edits run on the UI thread with an hourglass: seconds for an hour of stereo. A thread and a progress display if long sounds make that annoying
+- [ ] Mix sums with no gain change, so two loud sounds go over full scale (kept in the working copy; clipped on save to PCM). Decrease Volume first if that happens
 
 ## Phase 5: formats and dialogs
 - [ ] Recording Device dialog (API, device, native formats, channel names); probe on demand only

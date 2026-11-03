@@ -20,7 +20,7 @@ from tkinter import filedialog
 
 import numpy as np
 
-from .. import __version__
+from .. import __version__, edits
 from ..takes import default_dir
 from . import face as F
 from .audio import DeviceList, PlaybackError, Player
@@ -54,11 +54,16 @@ def error_log() -> Path:
 CHANNEL_CHOICES = ("mono", "stereo", "all")
 
 
+def same_moment(at: int, before: int, after: int) -> int:
+    """After a speed change, the position of the bit of sound it was at."""
+    return round(at * after / before) if before else 0
+
+
 def build_menus() -> list[Menu]:
     """The control menu, then the menu bar's, as in 3.1 plus our Device menu.
-    Edit and Effects come in Phase 4, the Device dialogs in Phase 5. The
-    Device menu's channel choices are ticked, as 3.1's Clock ticked Analog
-    or Digital, rather than a submenu."""
+    The Device dialogs come in Phase 5. The Device menu's channel choices are
+    ticked, as 3.1's Clock ticked Analog or Digital, rather than a submenu.
+    Edit and Effects items are enabled by _sync."""
     return [
         Menu(None, [Item("&Restore", "restore", enabled=False), Item("&Move", "move"),
                     Item("&Size", "size", enabled=False), Item("Mi&nimize", "minimize"),
@@ -68,16 +73,15 @@ def build_menus() -> list[Menu]:
         Menu("&File", [Item("&New", "new"), Item("&Open...", "open"), Item("&Save", "save"),
                        Item("Save &As...", "saveas"), Item("&Revert...", "revert"), SEPARATOR,
                        Item("E&xit", "exit")]),
-        Menu("&Edit", [Item("&Insert File...", "insert", enabled=False),
-                       Item("&Mix with File...", "mix", enabled=False), SEPARATOR,
-                       Item("Delete &Before Current Position", "delete-before", enabled=False),
-                       Item("Delete &After Current Position", "delete-after", enabled=False)]),
-        Menu("Effect&s", [Item("&Increase Volume (by 25%)", "louder", enabled=False),
-                          Item("&Decrease Volume", "quieter", enabled=False), SEPARATOR,
-                          Item("Increase &Speed (by 100%)", "faster", enabled=False),
-                          Item("Decrease S&peed", "slower", enabled=False), SEPARATOR,
-                          Item("&Add Echo", "echo", enabled=False),
-                          Item("&Reverse", "reverse", enabled=False)]),
+        Menu("&Edit", [Item("&Insert File...", "insert"), Item("&Mix with File...", "mix"),
+                       SEPARATOR,
+                       Item("Delete &Before Current Position", "delete-before"),
+                       Item("Delete &After Current Position", "delete-after")]),
+        Menu("Effect&s", [Item("&Increase Volume (by 25%)", "louder"),
+                          Item("&Decrease Volume", "quieter"), SEPARATOR,
+                          Item("Increase &Speed (by 100%)", "faster"),
+                          Item("Decrease S&peed", "slower"), SEPARATOR,
+                          Item("&Add Echo", "echo"), Item("&Reverse", "reverse")]),
         Menu("&Device", [Item("&Recording Device...", "device", enabled=False),
                          Item("&Output Format...", "format", enabled=False), SEPARATOR,
                          Item("&Mono", "channels-mono"), Item("&Stereo", "channels-stereo"),
@@ -184,6 +188,13 @@ class App:
         file_menu, device_menu = self.menus[1], self.menus[4]
         file_menu.item("save").enabled = file_menu.item("saveas").enabled = doc.take is not None
         file_menu.item("revert").enabled = doc.path is not None and doc.dirty
+        edit_menu, effects_menu = self.menus[2], self.menus[3]
+        sound = idle and doc.take is not None and length > 0
+        edit_menu.item("insert").enabled = edit_menu.item("mix").enabled = idle
+        edit_menu.item("delete-before").enabled = sound and at > 0
+        edit_menu.item("delete-after").enabled = sound and at < length
+        for item in effects_menu.items:
+            item.enabled = sound
         device_menu.item("refresh").enabled = idle and not self.devices.busy
         # The channels are a new sound's: once there's a sound, recordings take its.
         available = self.device.channels if self.device is not None else 2
@@ -558,6 +569,96 @@ class App:
             self.message(f"Can't open {self.doc.name}.\n\n{e}", kind="warning")
             return
         self._replace(doc)
+
+    # -- Edit and Effects -------------------------------------------------------------
+
+    def _edit(self, make, where=None) -> None:
+        """Run an Edit or Effects command. make(take) gives the new take, made
+        while the window waits (an hour of stereo takes seconds); where(position,
+        frames before, frames after) gives the position afterwards, which
+        otherwise stays put. A failure leaves the sound as it was."""
+        self.stop()
+        if self.doc.take is None:
+            return
+        before = self.doc.frames
+        self.root.config(cursor="watch")
+        self.root.update_idletasks()
+        try:
+            edited = make(self.doc.take)
+        except Exception as e:  # libsndfile or the disk, in their own words
+            self.message(f"That didn't work; the sound is as it was.\n\n{e}", kind="warning")
+            return
+        finally:
+            self.root.config(cursor="")
+        self.doc.apply(edited)
+        at = where(self.position, before, self.doc.frames) if where else self.position
+        self.position = int(min(max(at, 0), self.doc.frames))
+        self._sync()
+        self.redraw()
+
+    def _file_into(self, title: str, make, where=None) -> None:
+        """Insert or Mix: make(take, file blocks) with the file converted to the
+        sound's rate and channels; where as for _edit. Into no sound at all,
+        the file becomes it."""
+        self.stop()
+        name = filedialog.askopenfilename(parent=self.root, title=title, filetypes=OPEN_TYPES)
+        if not name:
+            return
+        if self.doc.take is None:
+            try:
+                doc = Document.open(name)
+            except Exception as e:
+                self.message(f"Can't open {Path(name).name}.\n\n{e}", kind="warning")
+                return
+            doc.path, doc.spec, doc.dirty = None, None, True  # still Untitled: Save asks where
+            self._replace(doc)
+            return
+        rate, channels = self.doc.rate, self.doc.channels
+        self._edit(lambda take: make(take, edits.file_blocks(name, rate, channels)), where)
+
+    def cmd_insert(self) -> None:
+        at = self.position
+        self._file_into("Insert File", lambda take, blocks: edits.insert(take, at, blocks),
+                        lambda at, before, after: at + after - before)  # past what went in
+
+    def cmd_mix(self) -> None:
+        at = self.position
+        self._file_into("Mix with File", lambda take, blocks: edits.mix(take, at, blocks))
+
+    def _confirm_delete(self, where: str) -> bool:
+        seconds = self.position / (self.doc.rate or 1)
+        return self.ask(f"Delete the sound {where} {seconds:.2f} sec.?\n\n"
+                        "Only Revert can bring it back.", [("&Yes", "yes"), ("&No", "no")]) == "yes"
+
+    def cmd_delete_before(self) -> None:
+        self.stop()
+        at = self.position
+        if at > 0 and self._confirm_delete("before"):
+            self._edit(lambda take: edits.delete_before(take, at), lambda *_: 0)
+
+    def cmd_delete_after(self) -> None:
+        self.stop()
+        at = self.position
+        if at < self.doc.frames and self._confirm_delete("after"):
+            self._edit(lambda take: edits.delete_after(take, at))
+
+    def cmd_louder(self) -> None:
+        self._edit(lambda take: edits.volume(take, edits.VOLUME_STEP))
+
+    def cmd_quieter(self) -> None:
+        self._edit(lambda take: edits.volume(take, 1 / edits.VOLUME_STEP))
+
+    def cmd_faster(self) -> None:
+        self._edit(lambda take: edits.speed(take, edits.SPEED_STEP), same_moment)
+
+    def cmd_slower(self) -> None:
+        self._edit(lambda take: edits.speed(take, 1 / edits.SPEED_STEP), same_moment)
+
+    def cmd_echo(self) -> None:
+        self._edit(edits.echo)
+
+    def cmd_reverse(self) -> None:
+        self._edit(edits.reverse)
 
     def cmd_exit(self) -> None:
         if self._closing:

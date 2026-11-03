@@ -190,6 +190,12 @@ Windows' own file dialogs for now.
 **Phase 4: Edit and Effects.** The four 3.1 Edit items and the six Effects, on the
 working copy, with undo (Revert reloads the saved file, as in 3.1). Inserted and
 mixed files are converted to the document's format first. Tests for each effect.
+**Built 2026-11-03** (`edits.py`): each command writes a new take block by block
+and the document swaps it in, so a failure leaves the sound as it was. Decrease
+Volume divides by 1.25, so it undoes Increase; speed is a soxr resample; the echo
+(0.25 s, -6 dB, one repeat) is our guess at 3.1's. Deletes ask first. Also brought
+forward from Phase 5 at Matthew's ask: Mono / Stereo / All Channels in the Device
+menu, and playback mixing extra channels into stereo. Waits on Matthew's try.
 
 **Phase 5: formats and dialogs.** The Recording Device dialog (API, device, native
 formats, channel picker) and the Output Format dialog (container, codec, quality),

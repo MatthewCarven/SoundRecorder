@@ -21,6 +21,7 @@ import threading
 import numpy as np
 
 from ..com import apartment
+from ..convert import fit_channels
 
 
 class DeviceList:
@@ -92,11 +93,7 @@ def fold(block: np.ndarray, channels: int) -> np.ndarray:
     """Fit a block to `channels` outputs (from playback_channels): as it is
     if it fits, else mixed, odd channels (1, 3...) left and even right, as
     the meter shows them; all of them to one for a mono device."""
-    if block.shape[1] <= channels:
-        return block
-    if channels == 1:
-        return block.mean(axis=1, keepdims=True)
-    return np.column_stack((block[:, 0::2].mean(axis=1), block[:, 1::2].mean(axis=1)))
+    return block if block.shape[1] <= channels else fit_channels(block, channels)
 
 
 class Player:

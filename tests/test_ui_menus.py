@@ -257,3 +257,133 @@ def test_picking_channels_moves_the_tick_until_theres_a_sound(monkeypatch):
     app._sync()  # a sound fixes the channels: the choices go grey, the tick stays
     assert ticked(app) == ["channels-all"]
     assert not any(app.menus[4].item("channels-" + n).enabled for n in ("mono", "stereo", "all"))
+
+
+# -- Edit and Effects through the window's own commands ------------------------------
+
+def _app_with_sound(monkeypatch, data, rate=8000):
+    import types
+
+    from soundrec.takes import Take
+
+    app = _app_without_a_window(2)
+    take = Take.create(rate, data.shape[1])
+    take.write(data)
+    take.finish()
+    app.doc.take = take
+    app.root = types.SimpleNamespace(config=lambda **kw: None, update_idletasks=lambda: None)
+    app.said, app.answers = [], []
+    monkeypatch.setattr(app, "redraw", lambda: None, raising=False)
+    monkeypatch.setattr(app, "message", lambda text, **kw: app.said.append(text), raising=False)
+    monkeypatch.setattr(app, "ask", lambda text, buttons, **kw: app.answers.pop(0), raising=False)
+    return app
+
+
+def enabled(app, menu):
+    return {i.command for i in app.menus[menu].items if not i.separator and i.enabled}
+
+
+def test_edit_and_effects_are_greyed_without_a_sound(monkeypatch):
+    app = _app_without_a_window(2)
+    app._sync()
+    assert enabled(app, 2) == {"insert", "mix"}
+    assert enabled(app, 3) == set()
+
+
+def test_delete_before_and_after_follow_the_position(monkeypatch):
+    app = _app_with_sound(monkeypatch, np.zeros((800, 2), np.float32))
+    app._sync()
+    assert enabled(app, 2) == {"insert", "mix", "delete-after"}  # at the start
+    assert len(enabled(app, 3)) == 6
+    app.position = 800
+    app._sync()
+    assert enabled(app, 2) == {"insert", "mix", "delete-before"}  # at the end
+    app.doc.close()
+
+
+def test_reverse_swaps_in_a_new_take_and_drops_the_old(monkeypatch):
+    a = np.random.default_rng(0).uniform(-0.5, 0.5, (800, 2)).astype(np.float32)
+    app = _app_with_sound(monkeypatch, a)
+    old = app.doc.take.path
+    app.cmd_reverse()
+    assert np.array_equal(app.doc.read(0, 800), a[::-1])
+    assert app.doc.dirty and not old.exists()
+    app.doc.close()
+
+
+def test_faster_keeps_the_position_on_the_same_bit_of_sound(monkeypatch):
+    app = _app_with_sound(monkeypatch, np.zeros((8000, 1), np.float32))
+    app.position = 6000
+    app.cmd_faster()
+    assert abs(app.doc.frames - 4000) <= 1 and abs(app.position - 3000) <= 1
+    app.doc.close()
+
+
+def test_delete_asks_first(monkeypatch):
+    a = np.arange(1600, dtype=np.float32).reshape(800, 2)
+    app = _app_with_sound(monkeypatch, a)
+    app.position = 300
+    app.answers = ["no"]
+    app.cmd_delete_before()
+    assert app.doc.frames == 800 and not app.doc.dirty
+    app.answers = ["yes"]
+    app.cmd_delete_before()
+    assert np.array_equal(app.doc.read(0, 800), a[300:]) and app.position == 0
+    app.position = 100
+    app.answers = ["yes"]
+    app.cmd_delete_after()
+    assert np.array_equal(app.doc.read(0, 800), a[300:400]) and app.position == 100
+    app.doc.close()
+
+
+def test_a_failed_edit_says_so_and_leaves_the_sound(monkeypatch):
+    a = np.zeros((800, 2), np.float32)
+    app = _app_with_sound(monkeypatch, a)
+    take = app.doc.take
+
+    def broken(t):
+        raise OSError("disk full")
+
+    app._edit(broken)
+    assert app.doc.take is take and not app.doc.dirty
+    assert "disk full" in app.said[0]
+    app.doc.close()
+
+
+def test_insert_file_lands_at_the_position_and_moves_past_it(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    from soundrec.ui import app as app_module
+
+    path = tmp_path / "in.wav"
+    b = np.full((400, 2), 0.25, np.float32)
+    sf.write(path, b, 8000, "FLOAT")
+    monkeypatch.setattr(app_module.filedialog, "askopenfilename", lambda **kw: str(path))
+    a = np.zeros((800, 2), np.float32)
+    app = _app_with_sound(monkeypatch, a)
+    app.position = 200
+    app.cmd_insert()
+    assert app.doc.frames == 1200 and app.position == 600
+    assert np.allclose(app.doc.read(200, 400), 0.25) and not app.doc.read(600, 600).any()
+    app.cmd_mix()  # at 600: over the silence after the inserted part
+    assert app.doc.frames == 1200 and np.allclose(app.doc.read(600, 400), 0.25)
+    app.doc.close()
+
+
+def test_insert_into_no_sound_makes_the_file_the_sound(monkeypatch, tmp_path):
+    import types
+
+    import soundfile as sf
+
+    from soundrec.ui import app as app_module
+
+    path = tmp_path / "in.flac"
+    sf.write(path, np.full((400, 1), 0.25, np.float32), 22050)
+    monkeypatch.setattr(app_module.filedialog, "askopenfilename", lambda **kw: str(path))
+    app = _app_without_a_window(2)
+    app.root = types.SimpleNamespace(config=lambda **kw: None, update_idletasks=lambda: None)
+    monkeypatch.setattr(app, "redraw", lambda: None, raising=False)
+    app.cmd_insert()
+    assert (app.doc.rate, app.doc.channels, app.doc.frames) == (22050, 1, 400)
+    assert app.doc.path is None and app.doc.dirty and app.doc.name == "(Untitled)"
+    app.doc.close()

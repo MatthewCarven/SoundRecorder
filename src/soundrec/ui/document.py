@@ -111,6 +111,13 @@ class Document:
             recording.discard()
         self.dirty = True
 
+    def apply(self, edited: Take) -> None:
+        """Swap in the take an Edit or Effects command made; the old one goes."""
+        old, self.take = self.take, edited
+        if old is not None:
+            old.discard()
+        self.dirty = True
+
     def close(self) -> None:
         """Throw the working copy away."""
         if self.take is not None:

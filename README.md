@@ -3,8 +3,9 @@
 A sound recorder for Windows that will look and behave like the Windows 3.1 one,
 over every Windows audio API, in every format. [PLAN.md](PLAN.md) has the design
 and the phases. Done so far: Phase 1 (finding devices and what they really do),
-Phase 2 (the recording engine, driven from the command line), and Phase 3 (the
-window: recording, playback, File, the menus). Next: Edit and Effects.
+Phase 2 (the recording engine, driven from the command line), Phase 3 (the
+window: recording, playback, File, the menus) and Phase 4 (Edit and Effects,
+and a Channels choice). Next: the Recording Device and Output Format dialogs.
 
 ## Set up
 
@@ -38,11 +39,24 @@ or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
   peak-hold tick. Stopped, the box is 3.1's own.
 - **File**: New, Open (anything libsndfile reads), Save, Save As (the extension
   picks the format: WAV, FLAC, MP3, Ogg, Opus, AIFF...), Revert, Exit.
+- **Edit**: Insert File and Mix with File at the position (the file is converted
+  to the sound's rate and channels; into an empty window it becomes the sound),
+  Delete Before / After Current Position (they ask first: only Revert brings it
+  back).
+- **Effects**: Increase Volume by 25% and Decrease Volume (each undoes the
+  other: the working copy is float, so nothing clips until it's saved to a
+  format that can't go past full scale), Increase Speed by 100% and Decrease
+  Speed (pitch too, as in 3.1; resampled, so no aliasing), Add Echo (one repeat,
+  0.25 s later at half the level), Reverse. Undo is 3.1's: Revert.
+- **Device > Mono / Stereo / All N Channels**: what a new sound records. Until you
+  pick, a mono device records mono and anything else stereo; Mono mixes channels 1
+  and 2. Once there's a sound, recordings take its channels. Playing a sound with
+  more channels than the speakers have mixes them down: odd channels left, even
+  right, as the meter shows them.
 - **Device > Refresh Devices** looks again and says what it found; plugging a
   device in looks again too, quietly.
 - If something goes wrong inside the window, it says so, and the details go to
-  `%LOCALAPPDATA%\SoundRecorder\errors.log`.
-  Edit and Effects come in Phase 4, the Device dialogs in Phase 5.
+  `%LOCALAPPDATA%\SoundRecorder\errors.log`. The Device dialogs come in Phase 5.
 - The caption drags the window; the minimize arrow, the taskbar button and
   Alt+Tab work as for any window. The control-menu box opens 3.1's control menu
   (double-click closes). Menus work with the mouse (press and drag, or click) and

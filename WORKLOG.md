@@ -392,3 +392,31 @@ dialog, and multichannel playback mixed into stereo.
   right, the meter's split, averaged so it can't clip.
 - 206 tests (the menu tick's pixels, the ticks and greying through the App's own
   `_sync` without a window, the fold). Not yet tried in the real window.
+
+## 2026-11-03: Phase 4, Edit and Effects
+
+Done in this session rather than a new one (Matthew answered by going on). `edits.py`
+has the ten commands as functions from a take to a new take, written block by block
+(64k frames), so an hour of sound costs no memory and a failure leaves the document's
+take alone (the half-made take is deleted). `Document.apply` swaps the new take in.
+
+- Insert and Mix read the file through `file_blocks`: `fit_channels` (one rule for any
+  channel count: fewer outputs average every channels-th input, so odd left and even
+  right for stereo; more repeat the inputs), then soxr to the sound's rate. Insert
+  moves the position past what went in. Into an empty window the file becomes the
+  sound, still Untitled, so Save asks where.
+- Deletes ask first (no undo but Revert, and an Untitled sound has none).
+- Volume: x1.25 and /1.25, in float, so Decrease undoes Increase and nothing clips
+  until a save to PCM or a lossy codec (`Quantiser` already clips there).
+- Speed: a soxr resample (2r to r for faster, r to 2r for slower), heard at the old
+  rate: pitch moves with it, as in 3.1, without aliasing. The position stays on the
+  same bit of sound.
+- Echo: one repeat, 0.25 s later, -6 dB, length unchanged. 3.1's own figures aren't
+  known; easy to tune.
+- `playback`'s fold now uses `fit_channels` too.
+
+227 tests: every edit with 1000-frame blocks so they cross block edges (echo checked
+against doing it in one go, speed by length and the tone's pitch), a failed edit leaves
+no take, and the window's commands driven through the App without a window (greying,
+position after each, delete's question, Insert into nothing). Not yet tried in the real
+window.
