@@ -420,3 +420,12 @@ against doing it in one go, speed by length and the tone's pitch), a failed edit
 no take, and the window's commands driven through the App without a window (greying,
 position after each, delete's question, Insert into nothing). Not yet tried in the real
 window.
+
+## 2026-11-03 — Matthew's first go at channels and Phase 4
+
+The launch command I gave failed in his PowerShell: a quoted exe path needs `&`
+in front there ("Unexpected token '-m'"). Noted in my notebook. With it running,
+he recorded the H2n in 4-channel mode on Device > All 4 Channels and played it
+back on headphones: works. "Seems to work well" for the window as a whole; the
+Edit and Effects commands one by one, and whether the echo sounds like 3.1's,
+are still to be confirmed.

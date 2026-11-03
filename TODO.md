@@ -95,7 +95,7 @@ See PLAN.md for the why.
 ## Channels (Matthew, 2026-11-03: brought forward from Phase 5)
 - [x] Device menu: Mono / Stereo / All N Channels, ticked as 3.1 ticked its choices (no submenu). For a new sound only; once there's a sound, recordings take its channels and the choices go grey. Until one's picked, a mono device records mono and anything else stereo. Mono mixes the first two; All is greyed for devices with two or fewer
 - [x] Playback folds a sound with more channels than the device has: odd channels left, even right (as the meter shows them); everything to one for a mono device. A 4-channel H2n take on Headphones (Realtek) now plays all four
-- [ ] **Matthew**: try them in the window: Device > All 4 Channels with the H2n in 4-channel mode, record, play it back on headphones
+- [x] **Matthew**: Device > All 4 Channels with the H2n in 4-channel mode, recorded and played back: works (2026-11-03)
 - [ ] The setting isn't remembered between runs (Phase 6's remembered settings)
 - [ ] Mono mixes channels 1 and 2 only. Mixing all four of the H2n's would be wrong for its MS pair (M and S aren't left and right) until Phase 5's picker knows which pair is which
 
@@ -104,7 +104,7 @@ See PLAN.md for the why.
 - [x] Volume +25% / back (x1.25, /1.25: each undoes the other; float working copy, clipped only on save), Speed x2 / /2 (soxr resample, pitch and all, position follows the sound), Add Echo (one repeat, 0.25 s, -6 dB; 3.1's figures unknown), Reverse
 - [x] Each edit writes a new take and swaps it in, so a failure leaves the sound alone; the old take is deleted. Undo is Revert, as in 3.1
 - [x] Tests: every edit across block edges, the window's commands without a window (227 in all)
-- [ ] **Matthew**: try them in the window. Does the echo sound like 3.1's? (delay and level are guesses: `ECHO_SECONDS`, `ECHO_LEVEL` in `edits.py`)
+- [ ] **Matthew**: try each of them in the window (2026-11-03: "seems to work well", Edit and Effects not yet confirmed one by one). Does the echo sound like 3.1's? (delay and level are guesses: `ECHO_SECONDS`, `ECHO_LEVEL` in `edits.py`)
 - [ ] Edits run on the UI thread with an hourglass: seconds for an hour of stereo. A thread and a progress display if long sounds make that annoying
 - [ ] Mix sums with no gain change, so two loud sounds go over full scale (kept in the working copy; clipped on save to PCM). Decrease Volume first if that happens
 
