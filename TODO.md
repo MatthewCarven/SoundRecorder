@@ -78,7 +78,7 @@ See PLAN.md for the why.
 - [x] Record and Refresh Devices "don't function" (Matthew). Record: WASAPI refused 2 of the H2n's 4 channels ("Invalid number of channels"); now all four are captured and the first two kept (`rec` too). Refresh worked but said nothing; now it says what it found. Errors in the window now go to a message box and errors.log instead of nowhere (pythonw has no console)
 - [x] **Matthew**: try Record and Refresh Devices again: working fine (2026-11-03)
 - [x] File > Exit did nothing (Matthew). His window was found with its hidden menu popup as the active window; how it got there wasn't reproduced. Now the popup is truly hidden between menus, handed back at once if it's ever activated (so an open menu isn't closed under the click), keys reaching it go to the main window, and a message box gives the focus back when it closes
-- [ ] **Matthew**: File > Exit again (and say what he saw the first time, if he remembers)
+- [x] **Matthew**: File > Exit again: works (2026-11-03)
 - Recording Device... and Output Format... are greyed on purpose: they're Phase 5's dialogs (Matthew asked; offered to bring them forward, and he's keeping them for Phase 5)
 
 ## Surfaced in Phase 3
