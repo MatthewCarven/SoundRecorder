@@ -361,3 +361,16 @@ Checked by forcing the popup active with the File menu open: 0.15 s later the ma
 window was active again, the menu still open, and Exit (by its mnemonic) closed the
 app. The menu, drag and Exit checks all still pass. Recording Device and Output
 Format are greyed on purpose (Phase 5); Matthew asked.
+
+### The seven beeps again, with Matthew listening
+
+Matthew confirmed File > Exit and Switch To... (Task View) work. Of the first test's
+long beep he said "maybe, but only broken for a millisecond", so the same test ran
+again while he listened: the 997 Hz tone at -30 dBFS, twice at 48 kHz then five
+times at 44.1 kHz, through the window's Play button to Headphones (Realtek), with
+the loopback recorded and soundcard's made-up silence counted from the start this
+time. All seven clean: 0 underflows, no padding, onset 23-31 ms, every tone 1.486-
+1.487 s long (1.5 s less the fades' quiet ends), 5 ms loudness within 0.02 dB, no
+phase steps. The first 44.1 kHz play, the long one last time, was as clean as the
+rest. So the 89 ms stretch didn't come back; it stays unattributed, most likely
+soundcard's padding.

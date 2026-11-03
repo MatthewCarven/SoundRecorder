@@ -65,7 +65,7 @@ See PLAN.md for the why.
 - [x] Device scan on a background thread; hot-plug and Refresh Devices rescan when nothing's open
 - [x] Playback written (WASAPI shared, Windows converts the rate), tested against a fake PortAudio only
 - [x] Playback heard (Matthew's OK, 2026-11-03): a -30 dBFS 997 Hz beep through the window to Headphones (Realtek), loopback-recorded. Pitch 997.00 Hz, level within 0.05 dB, onset ~35 ms after Play, position readout to the end. 7 plays: 6 clean (0 PortAudio underflows where counted, no slipped samples); 1 came back 89 ms long with a silent stretch, before anything was counted (below)
-- [x] Did Matthew hear a hiccup in the third of the seven beeps (the first at 44.1 kHz)? "Maybe, but only broken for a millisecond" (2026-11-03). An 89 ms gap would have been plain to hear, so most likely soundcard's loopback padding (below), not playback; not proven
+- [x] Did Matthew hear a hiccup in the third of the seven beeps (the first at 44.1 kHz)? "Maybe, but only broken for a millisecond" (2026-11-03). An 89 ms gap would have been plain to hear, so most likely soundcard's loopback padding (below), not playback; not proven. Rerun with him listening, the same 2 x 48 kHz then 5 x 44.1 kHz: all seven clean, 0 underflows, no padding (WORKLOG)
 - [x] **Matthew**: does it look right? He liked it at 2x (2026-11-03)
 - [x] **Matthew**: taskbar button, Alt+Tab, the minimize arrow, clicking the taskbar button to minimize and restore, Win+D: all work (2026-11-03)
 - [x] Dragging the caption crashed the app (Matthew). Cause reproduced and fixed: the window moves itself now (WORKLOG)
