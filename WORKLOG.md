@@ -320,3 +320,23 @@ three), with a peak-hold tick. Only while recording or playing; stopped, the box
 Recorder's peaks while recording and by the frames heard (the Player's position)
 while playing. Played the -30 dBFS beep once more through the invisible window: the
 meter read -30.0 dBFS throughout and was gone after Stop. 193 tests.
+
+### Record and Refresh "don't function" (Matthew)
+
+Reproduced invisibly with his default device, WASAPI "Microphone (H2n)" (4-channel
+mode, 4 ch, 44.1 kHz). Record gave "Invalid number of channels [PaErrorCode
+-9998]": `plan_channels` asks for 2 of a 4-channel device, and PortAudio's WASAPI
+shared mode opens it only with all four. `rec` had the same trouble without
+`--keep-all`; every test take in Phase 2 came from stereo devices or used
+`--keep-all`. Now `exact_channels(device)` (WASAPI and WDM-KS) makes
+`plan_channels` capture every channel and pick the first two (or mix them to mono).
+Refresh Devices did work (0.2 s) but showed nothing; now the status says "Finding
+devices..." and a message box says what it found. And since pythonw has no
+console, an exception in any Tk callback vanished: the window now writes it to
+`errors.log` beside the takes folder and says so in a message box, and the tick
+reschedules itself even if a job in it fails.
+
+Checked on the H2n (1.5 s, discarded): 65,709 frames at 44.1 kHz, 2 ch, the meter
+at about -25 / -30 dBFS from the room; Refresh: "Found 22 recording devices.
+Recording from WASAPI: Microphone (H2n)."; a deliberate 1/0 in a callback landed in
+the log and a message box. 199 tests.

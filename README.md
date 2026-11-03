@@ -38,7 +38,10 @@ or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
   peak-hold tick. Stopped, the box is 3.1's own.
 - **File**: New, Open (anything libsndfile reads), Save, Save As (the extension
   picks the format: WAV, FLAC, MP3, Ogg, Opus, AIFF...), Revert, Exit.
-- **Device > Refresh Devices** looks again; plugging a device in does it too.
+- **Device > Refresh Devices** looks again and says what it found; plugging a
+  device in looks again too, quietly.
+- If something goes wrong inside the window, it says so, and the details go to
+  `%LOCALAPPDATA%\SoundRecorder\errors.log`.
   Edit and Effects come in Phase 4, the Device dialogs in Phase 5.
 - The caption drags the window; the minimize arrow, the taskbar button and
   Alt+Tab work as for any window. The control-menu box opens 3.1's control menu
@@ -129,7 +132,9 @@ Each API tells a different story about the same hardware:
   endpoints need the same rate set again (they're new), and **"Enable audio
   enhancements" must be off** on Microphone (H2n). With it on, Windows hands all
   four channels over as one copied signal. `sound-recorder rec --device H2n
-  --keep-all --bits 24 out.wav` records all four.
+  --keep-all --bits 24 out.wav` records all four; without `--keep-all` (and in the
+  window) the first two. WASAPI opens it only with all four, so all four are
+  captured and the rest dropped.
 - **The H2n's ASIO driver loses over half the audio.** It hands over one 64-frame
   buffer every 3 ms (21,381 frames a second) at 44.1 and 48 kHz alike, with any
   block size; 64 frames is the only buffer size it offers. `rec` stops such a take

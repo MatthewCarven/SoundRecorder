@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from soundrec.cli import choose_device, main, native_rate, parse_pick, plan_channels
+from soundrec.cli import (choose_device, exact_channels, main, native_rate, parse_pick,
+                          plan_channels)
 from soundrec.devices import Device
 from soundrec.endpoints import Endpoint, WaveFormat
 from soundrec.takes import Take, orphans
@@ -74,6 +75,23 @@ def test_parse_pick_refuses(text):
 ])
 def test_plan_channels(available, out, pick, keep_all, planned):
     assert plan_channels(available, out, pick, keep_all) == planned
+
+
+@pytest.mark.parametrize("available, out, pick, planned", [
+    (4, None, None, (4, 2, (0, 1))),   # the H2n's four over WASAPI: all captured, the first two kept
+    (4, 1, None, (4, 1, (0, 1))),      # ... the first two mixed to mono
+    (4, None, (2,), (4, 1, (2,))),     # input 3 alone, still all four opened
+    (2, None, None, (2, 2, None)),     # a stereo device: as before
+    (1, 2, None, (1, 2, None)),
+])
+def test_plan_channels_when_the_api_wants_every_channel(available, out, pick, planned):
+    assert plan_channels(available, out, pick, exact=True) == planned
+
+
+def test_which_apis_want_every_channel():
+    assert [exact_channels(Device(api, "x", 4, 44100)) for api in
+            ("WASAPI", "WDM-KS", "MME", "DirectSound", "ASIO", "Loopback")] == \
+        [True, True, False, False, False, False]
 
 
 def test_plan_channels_refuses():

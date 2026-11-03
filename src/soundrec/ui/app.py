@@ -21,6 +21,7 @@ from tkinter import filedialog
 import numpy as np
 
 from .. import __version__
+from ..takes import default_dir
 from . import face as F
 from .audio import DeviceList, PlaybackError, Player
 from .dialog import MessageBox
@@ -42,6 +43,12 @@ OPEN_TYPES = [("Sounds", "*.wav *.flac *.mp3 *.ogg *.oga *.opus *.aif *.aiff *.a
 SAVE_TYPES = [("Wave files", "*.wav"), ("FLAC", "*.flac"), ("MP3", "*.mp3"),
               ("Ogg Vorbis", "*.ogg"), ("Opus", "*.opus"), ("AIFF", "*.aiff"),
               ("All files", "*.*")]
+
+
+def error_log() -> Path:
+    r"""Where the window writes down errors: beside the takes folder, so
+    %LOCALAPPDATA%\SoundRecorder\errors.log."""
+    return default_dir().parent / "errors.log"
 
 
 def build_menus() -> list[Menu]:
@@ -108,6 +115,8 @@ class App:
         self._alt_down = self._alt_used = False
         self._redraw_pending = False
         self._closing = False
+        self._showing_error = False
+        root.report_callback_exception = self._callback_error
 
         self._bind()
         self._sync()
@@ -154,7 +163,7 @@ class App:
             f.status = "Recording"
         elif self.player is not None:
             f.status = "Playing"
-        elif self.device is None and self.devices.busy:
+        elif self.devices.busy:
             f.status = "Finding devices..."
         else:
             f.status = "Stopped"
@@ -216,23 +225,48 @@ class App:
     def _tick(self) -> None:
         if self._closing:
             return
-        while True:
-            try:
-                job = self._inbox.get_nowait()
-            except queue.Empty:
-                break
-            job()
-        if self.recorder is not None:
-            rec = self.recorder
-            if rec.failure is not None or rec.stats.clock_problem():
-                self.stop()
-        if self.player is not None and self.player.finished.is_set():
-            self._stop_playing()
-        if self.busy:
-            self._update_meter()
-            self._sync()
-            self._render()
-        self.root.after(TICK_MS if self.busy else IDLE_TICK_MS, self._tick)
+        try:
+            while True:
+                try:
+                    job = self._inbox.get_nowait()
+                except queue.Empty:
+                    break
+                job()
+            if self.recorder is not None:
+                rec = self.recorder
+                if rec.failure is not None or rec.stats.clock_problem():
+                    self.stop()
+            if self.player is not None and self.player.finished.is_set():
+                self._stop_playing()
+            if self.busy:
+                self._update_meter()
+                self._sync()
+                self._render()
+        finally:  # an error above is reported, but mustn't stop the ticks
+            if not self._closing:
+                self.root.after(TICK_MS if self.busy else IDLE_TICK_MS, self._tick)
+
+    def _callback_error(self, kind, error, trace) -> None:
+        """Tk hands over any exception from a callback here. Under pythonw
+        there's no console to print it on, so write it down and say so."""
+        import traceback
+
+        log = error_log()
+        try:
+            log.parent.mkdir(parents=True, exist_ok=True)
+            with open(log, "a", encoding="utf-8") as f:
+                f.write(f"--- {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        + "".join(traceback.format_exception(kind, error, trace)) + "\n")
+        except OSError:
+            pass
+        if self._showing_error or self._closing:
+            return
+        self._showing_error = True
+        try:
+            self.message(f"Something went wrong: {error}\n\nThe details are in {log}.",
+                         kind="warning")
+        finally:
+            self._showing_error = False
 
     def _update_meter(self) -> None:
         """Peaks since the last tick: what came in, or what was heard."""
@@ -288,12 +322,13 @@ class App:
                          kind="warning")
             return
         from ..capture import CaptureError, open_capture
-        from ..cli import native_rate, plan_channels
+        from ..cli import exact_channels, native_rate, plan_channels
         from ..engine import Recorder
 
         try:
             capture_rate = native_rate(self.device)
-            capture_channels, channels, pick = plan_channels(self.device.channels, self.doc.channels)
+            capture_channels, channels, pick = plan_channels(
+                self.device.channels, self.doc.channels, exact=exact_channels(self.device))
             rec = Recorder(open_capture(self.device, capture_rate, capture_channels),
                            self.doc.rate or capture_rate, channels, pick,
                            meta={"device": self.device.key,
@@ -510,10 +545,19 @@ class App:
     cmd_close = cmd_exit
 
     def cmd_refresh(self) -> None:
-        if not self.busy:
-            self.devices.refresh(rescan=True, then=self._devices_found)
+        if not self.busy and self.devices.refresh(rescan=True, then=self._refreshed):
             self._sync()
             self.redraw()
+
+    def _refreshed(self) -> None:
+        """Refresh Devices asked for it, so say what was found."""
+        self._devices_found()
+        if self.device is None:
+            self.message(self.device_problem or "No recording device found.", kind="warning")
+            return
+        count = len(self.devices.scan.inputs)
+        self.message(f"Found {count} recording devices.\n\nRecording from {self.device.key}.",
+                     title="Refresh Devices", kind="info")
 
     def cmd_about(self) -> None:
         source = self.device.key if self.device is not None else "no device yet"

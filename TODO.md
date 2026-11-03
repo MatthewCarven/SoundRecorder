@@ -75,6 +75,8 @@ See PLAN.md for the why.
 - [x] Level meter (Matthew asked): two bars in the wave box while recording or playing; read -30.0 dBFS for the -30 dBFS test beep
 - [x] **Matthew**: the meter stays where it is, on the wave box's edges (2026-11-03)
 - [ ] **Matthew**: does it move right with his voice while recording?
+- [x] Record and Refresh Devices "don't function" (Matthew). Record: WASAPI refused 2 of the H2n's 4 channels ("Invalid number of channels"); now all four are captured and the first two kept (`rec` too). Refresh worked but said nothing; now it says what it found. Errors in the window now go to a message box and errors.log instead of nowhere (pythonw has no console)
+- [ ] **Matthew**: try Record and Refresh Devices again
 
 ## Surfaced in Phase 3
 - [ ] Open and Save As use Windows 11's own file dialogs. A 3.1-style one (File Name list, Directories, Drives) would fit Phase 5's dialogs, if wanted

@@ -149,10 +149,13 @@ def parse_pick(text):
     return tuple(c - 1 for c in channels)
 
 
-def plan_channels(available, out=None, pick=None, keep_all=False):
+def plan_channels(available, out=None, pick=None, keep_all=False, exact=False):
     """(channels to capture, channels to keep, pick) for a device with
     `available` inputs. By default: stereo from the first two, or mono mixed
-    from them; a mono device copied up if stereo is asked for."""
+    from them; a mono device copied up if stereo is asked for.
+
+    exact: the API opens the device only with all of its channels (see
+    exact_channels), so capture them all and pick from them."""
     if keep_all:
         if pick or (out and out != available):
             raise ValueError("--keep-all keeps every channel: leave out --pick and --channels")
@@ -160,9 +163,20 @@ def plan_channels(available, out=None, pick=None, keep_all=False):
     if pick:
         if max(pick) >= available:
             raise ValueError(f"the device has {available} channels")
-        return max(pick) + 1, out or len(pick), pick
+        return (available if exact else max(pick) + 1), out or len(pick), pick
     out = out or min(available, 2)
-    return min(available, max(out, 2)), out, None
+    capture = min(available, max(out, 2))
+    if exact and capture < available:
+        return available, out, tuple(range(capture))
+    return capture, out, None
+
+
+def exact_channels(device) -> bool:
+    """Whether PortAudio opens this device only with all of its channels.
+    WASAPI's shared mode does: asked for 2 of the H2n's 4 in 4-channel mode,
+    it says "Invalid number of channels". WDM-KS opens a driver's pin, which
+    may take only the counts it offers. The rest take any number."""
+    return device.api in ("WASAPI", "WDM-KS")
 
 
 def native_rate(device) -> int:
@@ -263,7 +277,7 @@ def _rec(argv) -> int:
     try:
         device = choose_device(scan().inputs, args.device, args.api)
         capture_channels, channels, pick = plan_channels(device.channels, args.channels, pick,
-                                                         args.keep_all)
+                                                         args.keep_all, exact_channels(device))
         capture_rate = args.capture_rate or native_rate(device)
         rate = args.rate or capture_rate
         preflight(spec, rate, channels)
