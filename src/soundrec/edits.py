@@ -30,6 +30,8 @@ SPEED_STEP = 2        # Increase Speed (by 100%) halves the length; Decrease dou
 ECHO_DELAYS_MS = tuple(range(50, 501, 50))  # Add Echo's choices: one repeat, this much later,
 ECHO_LEVEL = 0.5      # at half the level (-6 dB). 3.1's own figures aren't known; at 250 ms,
                       # Matthew calls it a close match from memory (2026-11-04)
+ECHO_CUSTOM_MS = 250  # Custom...'s first suggestion, and its limits:
+ECHO_MIN_MS, ECHO_MAX_MS = 1, 5000
 
 
 def _build(rate: int, channels: int, blocks, edit: str) -> Take:
@@ -131,9 +133,15 @@ def speed(take: Take, factor: float) -> Take:
     return _build(take.rate, take.channels, resampled(), "speed")
 
 
+def echo_frames(seconds: float, rate: int) -> int:
+    """An echo's delay in frames. As `echo` keeps the length, a delay of the
+    sound's length or more puts the whole repeat past the end, and does nothing."""
+    return max(round(seconds * rate), 1)
+
+
 def echo(take: Take, seconds: float, level: float = ECHO_LEVEL) -> Take:
     """One repeat of the sound, `seconds` later at `level`; the length stays."""
-    delay = max(round(seconds * take.rate), 1)
+    delay = echo_frames(seconds, take.rate)
 
     def echoed():
         for at in range(0, take.frames, BLOCK):

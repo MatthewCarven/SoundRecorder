@@ -153,7 +153,7 @@ NAudio has no DirectSound capture and would need two separate encoder packages.
   - Edit: Insert File..., Mix with File..., Delete Before Current Position, Delete
     After Current Position
   - Effects: Increase Volume (by 25%), Decrease Volume, Increase Speed (by 100%),
-    Decrease Speed, Add Echo (ours: a submenu, 50 ms to 500 ms), Reverse
+    Decrease Speed, Add Echo (ours: a submenu, 50 ms to 500 ms, and Custom...), Reverse
   - Device (ours): Recording Device..., Output Format..., Refresh Devices
   - Help: About Sound Recorder...
 - A level meter while recording, in keeping with the look (a green bar inside the
@@ -216,6 +216,15 @@ Output Format, since Windows' own Save dialog can't take a Convert button (my
 choice, easy to change). A Save As that converts saves a copy and leaves the sound
 in the window alone (Matthew's choice). A channel picker wasn't built: the dialog
 shows the channels' names. Waits on Matthew's try.
+
+**Add Echo > Custom...: built 2026-11-05, Matthew's request.** Tk has no input box
+and `simpledialog` is plain Tk, so it's drawn: `EditBox` in `ui/controls.py`, a
+one-line edit control that sits in a Dialog's `lists` beside the list boxes, and
+`InputBox` in `ui/dialogs.py`, laid out as Visual Basic's. It takes a title, a
+prompt, starting text and a check function, so anything else that needs a line of
+text can use it. Anything can be typed, and the check runs on OK, as in 3.1: a
+message says why, then it's back to the box with the text selected. Waits on
+Matthew's try.
 
 **Phase 6: package.** PyInstaller one-folder or one-file exe with libsndfile,
 PortAudio (ASIO build) and ffmpeg bundled, an icon, settings remembered (last device,

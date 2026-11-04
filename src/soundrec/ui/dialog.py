@@ -31,6 +31,7 @@ MARGIN = 16
 ICON = 32
 WRAP = 320           # widest line of text before it wraps
 REPEAT_DELAY_MS, REPEAT_MS = 400, 60  # a held scroll arrow, as on the main window
+BLINK_MS = 530       # an edit box's caret, at Windows' own default
 
 
 def wrap(text: str, font, width: int = WRAP) -> list[str]:
@@ -65,12 +66,13 @@ def icon(kind: str) -> Surface:
 
 
 class Dialog:
-    """A modal dialog: its frame, push buttons, list boxes and focus.
+    """A modal dialog: its frame, push buttons, list and edit boxes, and focus.
 
     buttons: (label with '&', answer) pairs, the first the default; `cancel`
     is what Escape gives. `boxes` is each button's rectangle, `lists` its
-    ListBoxes in Tab order, ahead of the buttons. A subclass lays those out,
-    paints the rest in paint_client, and hears of a list changing in changed.
+    ListBoxes and EditBoxes in Tab order, ahead of the buttons. A subclass lays
+    those out, paints the rest in paint_client, and hears of one changing in
+    changed.
     """
 
     def __init__(self, master: tk.Misc | None, zoom: int, title: str, client_w: int, client_h: int,
@@ -144,8 +146,8 @@ class Dialog:
 
     def key(self, keysym: str, char: str = "", alt: bool = False) -> bool:
         """A key: True once an answer is chosen. Alt+letter reaches any list or
-        button by its mnemonic; a plain letter only a button, unless a list
-        has the focus, where it finds a row."""
+        button by its mnemonic; a plain letter only a button, unless a list has
+        the focus, where it finds a row, or an edit box, where it's typed."""
         if keysym == "Escape":
             self.answer = self.cancel
             return True
@@ -240,14 +242,19 @@ class Dialog:
     def double(self, x: int, y: int) -> bool:
         """A double-click on a row means that row, and OK."""
         for box in self.lists:
-            if box.enabled and isinstance(box.hit(x, y), int):
-                return self._push(0)
+            if box.enabled and box.contains(x, y):
+                return box.double(x, y) and self._push(0)
         return False
 
     def wheel(self, x: int, y: int, notches: int) -> None:
         box = next((b for b in self.lists if b.enabled and b.contains(x, y)), self.focused_list)
         if box is not None:
             box.scroll(-3 * notches)
+
+    def blink(self) -> bool:
+        """The caret's half second is up: True if that wants a repaint."""
+        box = self.focused_list
+        return box is not None and box.blink()
 
     # -- painting -------------------------------------------------------------------
 
@@ -323,6 +330,16 @@ class Dialog:
         top.focus_force()
         return answer
 
+    def clipboard(self) -> str:
+        try:
+            return self._top.clipboard_get()
+        except tk.TclError:  # nothing on it, or nothing that's text
+            return ""
+
+    def to_clipboard(self, text: str) -> None:
+        self._top.clipboard_clear()
+        self._top.clipboard_append(text)
+
     def run(self, centre_on: tuple[int, int, int, int] | None = None) -> str:
         """Show it, wait for an answer, return it. centre_on: (x, y, w, h) on screen."""
         top = self._top = tk.Toplevel(self._master)
@@ -395,6 +412,11 @@ class Dialog:
             self.wheel(*here(e), round(e.delta / 120))
             redraw()
 
+        def blink():
+            blinking[0] = top.after(BLINK_MS, blink)
+            if self.blink():
+                redraw()
+
         window.label.bind("<ButtonPress-1>", press)
         window.label.bind("<B1-Motion>", motion)
         window.label.bind("<ButtonRelease-1>", release)
@@ -406,9 +428,11 @@ class Dialog:
         top.attributes("-topmost", True)
         top.focus_force()
         top.grab_set()
+        blinking = [top.after(BLINK_MS, blink)]
         top.wait_window()
         self._top = self._window = None
         try:  # back to the window that asked, not whatever Windows picks next
+            top.after_cancel(blinking[0])
             self._master.focus_force()
         except tk.TclError:
             pass

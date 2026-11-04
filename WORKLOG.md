@@ -614,3 +614,76 @@ Echo, level with its parent and on the screen, then clicking 100 ms gave one rep
 Tracks' 30 still passing.
 
 **Not tried:** by Matthew, how any of the delays sound.
+
+## 2026-11-05: Add Echo > Custom..., and a 3.1 input box
+
+Matthew asked: "can we still use inputbox? if yes then maybe an entry custom that
+links to that plus an isnumber() checker". Yes, by drawing it: Tk has no input box,
+and `simpledialog` is plain Tk, which looks nothing like the rest.
+
+**`EditBox`** (`ui/controls.py`) is a one-line edit control, pure logic and pixels
+like `ListBox`. It sits in a Dialog's `lists`, so the dialog's keys, focus and mouse
+reach it the same way. **`InputBox`** (`ui/dialogs.py`) is general purpose: title,
+prompt, starting text, and a check that returns what's wrong or None. It's laid out
+as Visual Basic's: prompt top left, OK and Cancel stacked on the right, the edit box
+across the bottom. `result` is the text, or None on Cancel. **Effects > Add Echo >
+Custom...** uses it for 1 to 5000 ms.
+
+The check runs on OK, as in 3.1: anything can be typed, a message box says why it's
+wrong, then it's back to the box with the text selected, so typing replaces it. It
+stood up on screen, so it stays. Filtering keys as you type would also have had to
+police pastes, and would give no reason for a key doing nothing.
+
+Traps beyond the ones on the brief:
+
+- `Dialog.double` treated any integer from `box.hit` as a list row and pressed OK, so
+  a double-click in the edit box would have accepted it. Each control now answers for
+  itself (`double`). `Dialog.key` already gave `lists` the first go at a plain
+  letter, so putting the edit box there dealt with the mnemonic trap.
+- `int()` refuses more than 4,300 digits, and a paste could reach that. The edit box
+  holds 255 characters.
+- `App.command` is untouched: the item's command is `custom-echo`, which doesn't start
+  with `echo-`.
+- "Would do nothing" is exact, not rounded: `edits.echo_frames` is the one sum for both
+  the check and the echo. On a 100 ms sound at 8 kHz, 99 ms is accepted and does
+  something, and 100 ms is refused and really would have done nothing. A test holds
+  both ends of that.
+
+Extras that were cheap: a blinking caret (a timer in `Dialog.run`, cancelled when the
+box closes), drag to select, double-click for a word, Ctrl+A, Ctrl+C/X/V. Spaces are
+refused along with everything else that isn't a digit, so " 250" gets the message.
+
+The first wording of the sound-length message broke "5000 / ms" across two lines, so
+it no longer quotes the delay.
+
+445 tests. Real window, invisible (no audio, no devices, focus stubbed): 35 of 35
+checks, from the mouse hovering Custom... to the repeat landing 4,410 frames later at
+half the level, to 2e-7. Save Tracks' 39 and the Device dialogs' 21 still pass, since
+`Dialog.run` and `Dialog.double` changed under them.
+
+**Not tried:** by Matthew, any of it. In the real window, by anyone:
+
+- **Real key presses.** With the focus stubbed, keys went straight to the dialog's own
+  handler with the characters I gave it, so what Windows really sends hasn't been
+  through it. Ctrl+C/X/V rest on Tk sending the control characters.
+- **Ctrl+C and Ctrl+X.** Not run, because they'd overwrite Matthew's clipboard. Reading
+  the clipboard was called, and it's covered windowless with a stand-in.
+- **The focus going to the box and back** after the message box, and to the main window
+  afterwards: `focus_force` was stubbed.
+- **How any custom delay sounds.** Nothing was played.
+
+To try it:
+
+1. Launch, and open or record a sound of a few seconds.
+2. Effects > Add Echo: Custom... should be at the foot, under a line. Click it. The box
+   opens on 250, highlighted, and the caret isn't showing until you click or press a key.
+3. Type 400 straight away: it should replace the 250 with no clicking first. Press
+   Enter. Does the sound change, and do you hear the repeat at 400 ms?
+4. Custom... again: it should open on 400. Type abc and press Enter: a message says why.
+   Press Enter again: you're back with abc selected, and typing replaces it.
+5. Try 0, 6000, -5, 1.5 and 250 with a space after it. With a sound under 5 seconds, try
+   a delay longer than the sound. Each should say why, and leave the sound alone.
+6. Tab through OK and Cancel and back. Click in the text, drag across it, double-click
+   it. Esc and the Cancel button leave the sound alone.
+7. Ctrl+C, Ctrl+X and Ctrl+V in the box. Copy something from Notepad and paste it.
+8. Does the look pass? Layout is from memory of Visual Basic's box.

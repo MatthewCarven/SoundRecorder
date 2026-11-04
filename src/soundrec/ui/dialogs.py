@@ -1,4 +1,4 @@
-"""The Device menu's two dialogs, in 3.1's style.
+"""The app's dialogs, in 3.1's style.
 
 Output Format says what Save As aims for: format, encoding, quality, rate and
 channels. Each list depends on the one before it, so choosing a format refills
@@ -9,6 +9,8 @@ no hardware: what it shows comes from the scan the window already has. Only
 the Probe button asks a device about its formats, because asking can knock the
 H2n to the wrong rate until it's replugged, and that button warns first.
 WASAPI exclusive mode isn't offered: PortAudio repeats audio in it (WORKLOG).
+
+InputBox asks for a line of text, for anything that needs one.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from ..formats import RATES, channels_text
 from ..output import (ONLY_RATES, OutputSpec, Target, channels_for, default_quality, format_names,
                       qualities, rate_for, subtype_names)
 from ..probe import Probe
-from .controls import LABEL_HEIGHT, ListBox, height_for
+from .controls import EDIT_HEIGHT, LABEL_HEIGHT, EditBox, ListBox, height_for
 from .dialog import BUTTON_H, Dialog, wrap
 from .fonts import system_font
 from .raster import BLACK, Surface
@@ -28,6 +30,7 @@ from .raster import BLACK, Surface
 M = 12               # between controls
 BUTTON_W = 72
 LINE = 16
+CUT, COPY, PASTE = "\x18", "\x03", "\x16"  # what Ctrl+X, C and V type
 
 COMMON_FORMATS = ("WAV", "FLAC", "MP3", "OGG", "M4A")  # at the top of the list: the rest are rare
 BY_NAME = "From the file's name"
@@ -380,4 +383,83 @@ class RecordingDeviceDialog(Dialog):
         font = system_font()
         x, y = self.details_at
         for i, line in enumerate(self.details()[:self.DETAIL_LINES]):
+            s.text(font, x, y + i * LINE, line, BLACK)
+
+
+# -- an input box -----------------------------------------------------------------------
+
+def is_whole_number(text: str) -> bool:
+    """The digits 0 to 9 and nothing else: no sign, point or spaces, and not
+    empty. isdigit alone would pass other scripts' digits too, and superscripts."""
+    return text.isascii() and text.isdigit()
+
+
+class InputBox(Dialog):
+    """Ask for a line of text, laid out as Visual Basic's InputBox: the prompt
+    at the top left, OK and Cancel stacked on the right, the edit box across
+    the bottom. `result` is the text, or None if it was cancelled.
+
+    check(text) says what's wrong with the text, or None if nothing is. It
+    runs on OK, not as you type, as 3.1's dialogs did: the reason comes up in
+    a message box, then it's back to this box with the text selected.
+    """
+
+    PROMPT_W = 240
+
+    def __init__(self, master, zoom: int, title: str, prompt: str, text: str = "", check=None):
+        self.check = check
+        self.prompt = wrap(prompt, system_font(), self.PROMPT_W)
+        body = max(len(self.prompt) * LINE, 2 * BUTTON_H + M)  # the taller of the prompt and buttons
+        client_w = M + self.PROMPT_W + M + BUTTON_W + M
+        client_h = M + body + M + EDIT_HEIGHT + M
+        super().__init__(master, zoom, title, client_w, client_h,
+                         [("OK", "ok"), ("Cancel", "cancel")], "cancel")
+        cx, cy = self.client
+        x0, y0 = cx + M, cy + M
+        bx = x0 + self.PROMPT_W + M
+        self.prompt_at = (x0, y0)
+        self.boxes = [(bx, y0 + i * (BUTTON_H + M), bx + BUTTON_W - 1,
+                       y0 + i * (BUTTON_H + M) + BUTTON_H - 1) for i in range(2)]
+        top = y0 + body + M
+        self.edit = EditBox((x0, top, bx + BUTTON_W - 1, top + EDIT_HEIGHT - 1), text)
+        self.lists = [self.edit]
+
+    @property
+    def result(self) -> str | None:
+        return self.edit.text if self.answer == "ok" else None
+
+    def clicked(self, button: int) -> bool:
+        if self.buttons[button][1] == "ok" and self.check is not None:
+            problem = self.check(self.edit.text)
+            if problem is not None:
+                self.message(problem, kind="warning")
+                self._to_edit()
+                return False
+        return super().clicked(button)
+
+    def _to_edit(self) -> None:
+        self.focus = self.lists.index(self.edit)
+        self.edit.select_all()
+
+    def _move_focus(self, step: int) -> None:
+        super()._move_focus(step)
+        if self.focused_list is self.edit:  # tabbing in selects it, as on opening
+            self._to_edit()
+
+    def key(self, keysym: str, char: str = "", alt: bool = False) -> bool:
+        edit = self.edit
+        if self.focused_list is not edit or alt or char not in (CUT, COPY, PASTE):
+            return super().key(keysym, char, alt)
+        if char == PASTE:
+            edit.paste(self.clipboard())
+        elif edit.selected_text:
+            self.to_clipboard(edit.selected_text)
+            if char == CUT:
+                edit.insert("")
+        return False
+
+    def paint_client(self, s: Surface) -> None:
+        font = system_font()
+        x, y = self.prompt_at
+        for i, line in enumerate(self.prompt):
             s.text(font, x, y + i * LINE, line, BLACK)

@@ -59,7 +59,8 @@ until Device > Recording Device picks another, or from `--device` / `--api` (the
   other: the working copy is float, so nothing clips until it's saved to a
   format that can't go past full scale), Increase Speed by 100% and Decrease
   Speed (pitch too, as in 3.1; resampled, so no aliasing), Add Echo (one repeat at
-  half the level, 50 to 500 ms later, picked from a submenu), Reverse. Undo is
+  half the level, 50 to 500 ms later from a submenu, or any whole number of
+  milliseconds from 1 to 5000 through its Custom... box), Reverse. Undo is
   3.1's: Revert.
 - **Device > Recording Device**: every API and device, greyed for jacks with
   nothing plugged in. Choosing one asks it nothing: what's shown comes from the scan.

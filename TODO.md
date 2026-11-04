@@ -120,6 +120,17 @@ See PLAN.md for the why.
 - [ ] A popup is placed against `winfo_screenwidth`, the primary screen, so a window on a second monitor would have its menus pulled back to the first. Existing behaviour, untested here (the laptop has one screen)
 - [ ] A cascade taller than the screen (about 55 tracks at 2x) would run off the bottom; All Tracks is still there
 
+## Add Echo > Custom... (Matthew, 2026-11-05)
+- [x] `EditBox` in `ui/controls.py`: caret, Left/Right/Home/End, Backspace/Delete, all selected on opening, click, drag, double-click, Ctrl+A, a blinking caret, sliding for long text, 255 characters at most
+- [x] `InputBox` in `ui/dialogs.py`: general purpose, Visual Basic's layout, Enter/Esc/Tab, Ctrl+C/X/V, a check function run on OK
+- [x] `is_whole_number`: the digits 0 to 9 only. Spaces are refused too
+- [x] Custom... at the foot of the cascade, under a separator: 1 to 5000 ms, refused if the sound can't hold it, starting on the last delay used this run, else 250. The command is `custom-echo`, so `App.command` doesn't take it for a number
+- [x] Tests (445), and a real (invisible) window: 35 checks, with the Save Tracks and Device dialog checks still passing
+- [ ] **Matthew**: try it in the real window (steps in WORKLOG, 2026-11-05). Real key presses and Ctrl+C/X/V haven't been through it yet
+- [ ] The delays on the menu don't check the sound's length as Custom... does: 500 ms on a 200 ms sound changes nothing, and still marks it changed. Greying them, or the same message, if that matters
+- [ ] Shift+arrows don't extend the selection, because `Dialog.key` doesn't pass Shift on. Dragging does it
+- [ ] If another dialog takes an `EditBox`, Ctrl+C/X/V should move from `InputBox.key` up to `Dialog.key`
+
 ## Phase 5: formats and dialogs
 - [x] Recording Device dialog (API, device, native formats, channel names); probe on demand only, warning first on the H2n. Greyed endpoints; no exclusive mode; a warning on the H2n's ASIO driver
 - [x] Output Format dialog (every `soundfile` format, every encoding that really writes, quality per codec, rate, channels)
@@ -138,4 +149,4 @@ See PLAN.md for the why.
 
 ## Phase 6: package
 - [ ] PyInstaller build with PortAudio (ASIO), libsndfile and ffmpeg bundled. imageio-ffmpeg's binary is 100 MB, the build's biggest part by far: `imageio_ffmpeg` needs collecting as data
-- [ ] Icon, remembered settings, smoke test of the built exe
+- [ ] Icon, remembered settings (Custom...'s last delay joins that list), smoke test of the built exe

@@ -1,4 +1,4 @@
-"""The list box and the Device dialogs, driven with no window, as the Tracker is."""
+"""The list and edit boxes and the dialogs, driven with no window, as the Tracker is."""
 
 import numpy as np
 import pytest
@@ -7,11 +7,11 @@ from soundrec.devices import Device, Scan
 from soundrec.endpoints import Endpoint, WaveFormat
 from soundrec.output import OutputSpec, Target, default_quality, qualities
 from soundrec.probe import Probe
-from soundrec.ui.controls import ROW, ListBox, height_for
-from soundrec.ui.dialog import MessageBox
-from soundrec.ui.dialogs import (BY_NAME, OutputFormatDialog, RecordingDeviceDialog, advice,
-                                 channel_names, describe, is_touchy)
-from soundrec.ui.fonts import fonts_dir
+from soundrec.ui.controls import EDIT_HEIGHT, ROW, TEXT_INSET, EditBox, ListBox, height_for
+from soundrec.ui.dialog import Dialog, MessageBox
+from soundrec.ui.dialogs import (BY_NAME, InputBox, OutputFormatDialog, RecordingDeviceDialog,
+                                 advice, channel_names, describe, is_touchy, is_whole_number)
+from soundrec.ui.fonts import fonts_dir, system_font
 from soundrec.ui.raster import BLACK, GREY, NAVY, WHITE, Surface
 
 pytestmark = pytest.mark.skipif(not (fonts_dir() / "vgasys.fon").exists(),
@@ -524,3 +524,436 @@ def test_it_paints():
     s = d.paint()
     assert (s.width, s.height) == (d.width, d.height)
     assert tuple(s.pixels[d.api_list.box[1] + 2, d.api_list.box[0] + 1]) == NAVY
+
+
+# -- the edit box ------------------------------------------------------------------------------
+
+def editbox(text="hello", width=200):
+    return EditBox((10, 30, 10 + width - 1, 30 + EDIT_HEIGHT - 1), text)
+
+
+def typed(box, text):
+    for c in text:
+        box.key(c, c)
+
+
+def gap_x(box, gap):
+    """The dialog x of a gap between characters."""
+    return box.box[0] + TEXT_INSET + system_font().measure(box.text[box.left:gap])
+
+
+def test_a_new_edit_box_is_all_selected_so_typing_replaces_it():
+    box = editbox()
+    assert box.selected_text == "hello" and box.caret == 5
+    typed(box, "x")
+    assert box.text == "x" and box.caret == 1 and box.selected_text == ""
+
+
+def test_the_caret_keys():
+    box = editbox()
+    box.key("Home")
+    assert box.caret == 0 and box.selected_text == ""
+    assert not box.key("Left")  # the start already
+    assert box.key("Right") and box.key("Right") and box.caret == 2
+    typed(box, "X")
+    assert box.text == "heXllo" and box.caret == 3
+    assert box.key("End") and box.caret == 6
+    assert not box.key("Right")
+    box.key("Left")
+    assert box.caret == 5
+
+
+def test_left_and_right_leave_a_selection_at_its_ends():
+    box = editbox()
+    box.key("Left")
+    assert box.caret == 0 and box.selected_text == ""
+    box.select_all()
+    box.key("Right")
+    assert box.caret == 5 and box.selected_text == ""
+
+
+def test_backspace_and_delete():
+    box = editbox()
+    box.key("End")
+    assert box.key("BackSpace", "\x08") and box.text == "hell" and box.caret == 4
+    assert not box.key("Delete", "\x7f")  # nothing after the caret
+    box.key("Home")
+    assert not box.key("BackSpace", "\x08")  # nothing before it
+    assert box.key("Delete", "\x7f") and box.text == "ell" and box.caret == 0
+    box.select_all()
+    assert box.key("BackSpace", "\x08") and box.text == ""
+    assert not box.key("Delete", "\x7f") and not box.key("BackSpace", "\x08")  # an empty box
+
+
+def test_delete_takes_a_selection_and_stays_at_its_start():
+    box = editbox()
+    box.anchor, box.caret = 1, 3
+    box.key("Delete", "\x7f")
+    assert box.text == "hlo" and box.caret == 1
+
+
+def test_anything_printable_goes_in_and_control_characters_dont():
+    box = editbox("")
+    typed(box, "a -1.٣")
+    assert box.text == "a -1.٣"
+    for key, char in (("v", "\x16"), ("Return", "\r"), ("F1", ""), ("Shift_L", "")):
+        assert not box.key(key, char)
+    assert box.text == "a -1.٣"
+
+
+def test_ctrl_a_selects_everything():
+    box = editbox()
+    box.key("End")
+    assert box.key("a", "\x01") and box.selected_text == "hello"
+
+
+def test_a_click_puts_the_caret_in_the_nearest_gap():
+    box = editbox()
+    y = box.box[1] + 5
+    box.press(gap_x(box, 2), y)
+    assert box.caret == 2 and box.selected_text == ""
+    box.press(gap_x(box, 2) + 1, y)
+    assert box.caret == 2
+    box.press(gap_x(box, 3) - 1, y)
+    assert box.caret == 3
+    box.press(box.box[2] - 1, y)  # past the end of the text
+    assert box.caret == 5
+    box.press(box.box[0] + 1, y)
+    assert box.caret == 0
+
+
+def test_a_drag_selects_even_off_the_box():
+    box = editbox()
+    box.press(gap_x(box, 1), 40)
+    assert box.select(box.hit(gap_x(box, 4), 40)) and box.selected_text == "ell"
+    assert box.select(box.hit(gap_x(box, 0), 500)) and box.selected_text == "h"
+    assert not box.select(0)  # no further to go
+
+
+def test_a_double_click_takes_the_word_and_isnt_ok():
+    box = editbox("one two three")
+    assert not box.double(gap_x(box, 5), 40)
+    assert box.selected_text == "two"
+
+
+def test_the_text_has_a_limit():
+    box = EditBox((0, 0, 100, EDIT_HEIGHT - 1), "x" * 20, limit=10)
+    assert box.text == "x" * 10
+    box.key("End")
+    typed(box, "y")
+    assert box.text == "x" * 10
+    box.key("BackSpace", "\x08")
+    box.insert("abcdef")
+    assert box.text == "x" * 9 + "a"
+    box.select_all()
+    box.insert("z" * 20)
+    assert box.text == "z" * 10
+
+
+def test_a_paste_takes_the_first_line_and_only_whats_printable():
+    box = editbox()
+    box.paste("one\ttwo\nthree")
+    assert box.text == "onetwo"
+    box.paste("")
+    assert box.text == "onetwo"
+
+
+def test_long_text_slides_to_keep_the_caret_in_view():
+    font = system_font()
+    box = editbox("", width=60)
+    typed(box, "0123456789" * 4)
+    assert box.left > 0 and font.measure(box.text[box.left:box.caret]) <= box.room
+    box.key("Home")
+    assert box.left == 0
+    box.key("End")
+    far = box.left
+    assert far > 0
+    box.key("BackSpace", "\x08")
+    box.key("BackSpace", "\x08")
+    assert box.left < far  # back along as it shortens, leaving no empty room
+    box.select_all()
+    box.key("BackSpace", "\x08")
+    assert box.left == 0
+
+
+def test_clicking_in_slid_text_counts_from_whats_showing():
+    box = editbox("0123456789" * 4, width=60)
+    box.press(gap_x(box, box.left + 2), 40)
+    assert box.caret == box.left + 2
+
+
+def test_an_edit_box_paints_its_frame_and_selection():
+    box = editbox()
+    s = Surface(300, 80, WHITE)
+    box.paint(s, focused=True)
+    x0, y0, x1, y1 = box.box
+    assert tuple(s.pixels[y0, x0 + 5]) == BLACK and tuple(s.pixels[y1, x1 - 5]) == BLACK
+    assert tuple(s.pixels[y0 + 3, x0 + TEXT_INSET]) == NAVY
+    text = s.pixels[y0 + 3:y1 - 2, x0 + TEXT_INSET:gap_x(box, 5)]
+    assert np.all(text == WHITE, axis=2).any()  # the ink, white on the navy
+    assert tuple(s.pixels[y0 + 3, gap_x(box, 5) + 1]) == WHITE  # it stops with the text
+
+
+def test_the_caret_shows_only_with_the_focus_and_no_selection():
+    def column(box, focused):
+        s = Surface(300, 80, WHITE)
+        box.paint(s, focused)
+        return s.pixels[box.box[1] + 3:box.box[3] - 2, gap_x(box, box.caret)]
+
+    box = editbox()
+    box.key("End")
+    assert np.all(column(box, True) == BLACK)
+    assert not np.all(column(box, False) == BLACK)
+    box.blink()
+    assert not np.all(column(box, True) == BLACK)  # the off half
+    box.key("Left")
+    assert np.all(column(box, True) == BLACK)  # any movement lights it again
+
+
+def test_a_lost_focus_hides_the_selection():
+    s = Surface(300, 80, WHITE)
+    editbox().paint(s, focused=False)
+    assert not np.all(s.pixels == NAVY, axis=2).any()
+
+
+def test_a_blink_needs_a_repaint_only_if_there_is_a_caret():
+    box = editbox()
+    assert not box.blink()  # all selected: no caret
+    box.key("End")
+    assert box.blink()
+
+
+def test_long_text_stays_inside_the_frame():
+    box = editbox("W" * 100, width=60)
+    s = Surface(300, 80, WHITE)
+    box.paint(s, focused=False)
+    assert np.all(s.pixels[:, box.box[2] + 1:] == 255)
+
+
+# -- an edit box in a dialog --------------------------------------------------------------------
+
+def dialog_with_edit():
+    d = Dialog(None, 1, "t", 200, 100, [("&Yes", "yes"), ("&No", "no")], "no")
+    d.boxes = [(120, 60, 180, 80), (120, 90, 180, 110)]
+    d.lists = [EditBox((20, 40, 100, 40 + EDIT_HEIGHT - 1), "")]
+    return d
+
+
+def test_with_the_focus_a_letter_is_typed_and_presses_nothing():
+    d = dialog_with_edit()
+    assert not d.key("y", "y") and not d.key("space", " ") and not d.key("n", "n")
+    assert d.lists[0].text == "y n"
+    assert d.answer == "no"
+
+
+def test_without_the_focus_a_letter_is_a_mnemonic_again():
+    d = dialog_with_edit()
+    d.key("Tab")
+    assert d.focused_button == 0
+    assert d.key("y", "y") and d.answer == "yes"
+    assert d.lists[0].text == ""
+
+
+def test_alt_still_reaches_a_button_from_the_edit_box():
+    d = dialog_with_edit()
+    assert d.key("y", "y", alt=True) and d.answer == "yes"
+    assert d.lists[0].text == ""
+
+
+def test_a_double_click_in_the_edit_box_doesnt_press_the_default_button():
+    d = dialog_with_edit()
+    d.lists[0].insert("two words")
+    x, y = d.lists[0].box[0] + TEXT_INSET + 1, d.lists[0].box[1] + 5
+    assert not d.double(x, y)
+    assert d.lists[0].selected_text == "two"
+
+
+def test_the_mouse_works_an_edit_box_through_the_dialog():
+    d = dialog_with_edit()
+    box = d.lists[0]
+    box.insert("hello")
+    d.focus = 1
+    y = box.box[1] + 5
+    d.press(gap_x(box, 1), y)
+    assert d.focused_list is box and box.caret == 1
+    assert d.motion(gap_x(box, 3), y) and box.selected_text == "el"
+    assert not d.motion(gap_x(box, 3), y)
+    assert not d.release(gap_x(box, 3), y)
+    assert d.held is None and box.selected_text == "el"
+    assert not d.motion(gap_x(box, 5), y)  # the button's up: no more dragging
+
+
+def test_the_wheel_over_an_edit_box_does_nothing():
+    d = dialog_with_edit()
+    d.wheel(30, 45, 2)
+    assert d.lists[0].left == 0
+
+
+def test_only_a_focused_edit_box_blinks():
+    d = dialog_with_edit()
+    assert d.blink()
+    d.key("Tab")
+    assert not d.blink()
+    assert not OutputFormatDialog(None, 1).blink()  # a list has no caret
+
+
+# -- the input box ------------------------------------------------------------------------------
+
+def inputbox(text="250", check=None, prompt="Delay in milliseconds (1 to 5000):"):
+    return InputBox(None, 1, "Add Echo", prompt, text, check)
+
+
+def test_it_lays_out_as_visual_basics_did():
+    d = inputbox()
+    (ax0, ay0, ax1, ay1), (bx0, by0, bx1, by1) = d.boxes
+    ex0, ey0, ex1, ey1 = d.edit.box
+    px, py = d.prompt_at
+    assert (ax0, ax1) == (bx0, bx1) and ay1 < by0  # OK above Cancel, the same width
+    assert px < ax0 and py <= ay0  # the prompt to their left, from the top
+    assert ey0 > by1 and ex0 == px and ex1 == ax1  # the edit box under them all, across
+    assert ey1 < d.height - 5 and ax1 < d.width - 5  # inside the frame
+
+
+def test_a_long_prompt_wraps_beside_the_buttons_and_pushes_the_edit_box_down():
+    short = inputbox()
+    d = inputbox(prompt="word " * 80)
+    assert len(d.prompt) > 3
+    assert all(system_font().measure(line) <= d.PROMPT_W for line in d.prompt)
+    assert d.edit.box[1] >= d.prompt_at[1] + 16 * len(d.prompt)
+    assert d.height > short.height
+
+
+def test_it_opens_on_the_edit_box_with_the_text_selected():
+    d = inputbox()
+    assert d.focused_list is d.edit and d.edit.selected_text == "250"
+    assert d.answer == "cancel" and d.result is None
+
+
+def test_enter_is_ok_and_gives_the_text():
+    d = inputbox()
+    typed(d.edit, "750")
+    assert d.key("Return", "\r") and d.answer == "ok" and d.result == "750"
+
+
+def test_esc_is_cancel_and_gives_none():
+    d = inputbox()
+    typed(d.edit, "750")
+    assert d.key("Escape") and d.result is None
+
+
+def test_the_buttons_work_with_the_mouse():
+    for button, result in ((0, "250"), (1, None)):
+        d = inputbox()
+        x0, y0, _, _ = d.boxes[button]
+        d.press(x0 + 3, y0 + 3)
+        assert d.release(x0 + 3, y0 + 3) and d.result == result
+
+
+def test_tab_goes_round_and_back_into_the_edit_box_selects_it():
+    d = inputbox()
+    d.edit.key("End")
+    d.key("Tab")
+    assert d.focused_button == 0
+    d.key("Tab")
+    assert d.focused_button == 1
+    d.key("Tab")
+    assert d.focused_list is d.edit and d.edit.selected_text == "250"
+    d.key("ISO_Left_Tab")
+    assert d.focused_button == 1
+
+
+def test_enter_on_cancel_cancels():
+    d = inputbox()
+    d.key("Tab"), d.key("Tab")
+    assert d.key("Return", "\r") and d.result is None
+
+
+def test_a_check_that_passes_answers():
+    seen = []
+    d = inputbox(check=lambda text: seen.append(text))
+    typed(d.edit, "42")
+    assert d.key("Return", "\r") and d.result == "42" and seen == ["42"]
+
+
+def test_a_refusal_says_why_then_comes_back_with_the_text_selected():
+    said = []
+    d = inputbox(check=lambda text: None if text == "7" else "Not that one.")
+    d.message = lambda text, kind="info": said.append((text, kind))
+    typed(d.edit, "12")
+    d.edit.key("Left")
+    assert not d.key("Return", "\r")
+    assert said == [("Not that one.", "warning")]
+    assert d.focused_list is d.edit and d.edit.selected_text == "12" and d.answer == "cancel"
+    typed(d.edit, "7")  # it replaces the refused text
+    assert d.key("Return", "\r") and d.result == "7"
+
+
+def test_a_refusal_after_clicking_ok_gives_the_focus_back_to_the_edit_box():
+    d = inputbox(check=lambda text: "No.")
+    d.message = lambda text, kind="info": None
+    x0, y0, _, _ = d.boxes[0]
+    d.press(x0 + 3, y0 + 3)
+    assert d.focused_button == 0
+    assert not d.release(x0 + 3, y0 + 3)
+    assert d.focused_list is d.edit and d.edit.selected_text == "250" and d.result is None
+
+
+def test_cancel_doesnt_check():
+    def never(text):
+        raise AssertionError("cancel ran the check")
+
+    d = inputbox(check=never)
+    assert d.key("Escape") and d.result is None
+    d = inputbox(check=never)
+    x0, y0, _, _ = d.boxes[1]
+    d.press(x0 + 3, y0 + 3)
+    assert d.release(x0 + 3, y0 + 3) and d.result is None
+
+
+def test_cut_copy_and_paste():
+    d = inputbox()
+    board = []
+    d.to_clipboard = board.append
+    d.clipboard = lambda: "99\nignored"
+    assert not d.key("c", "\x03")
+    assert board == ["250"] and d.edit.text == "250"
+    assert not d.key("x", "\x18")
+    assert board == ["250", "250"] and d.edit.text == ""
+    assert not d.key("v", "\x16")
+    assert d.edit.text == "99"
+    assert not d.key("c", "\x03") and len(board) == 2  # nothing selected, nothing copied
+
+
+def test_the_clipboard_keys_belong_to_the_edit_box():
+    d = inputbox()
+    d.to_clipboard = d.clipboard = None  # calling either from a button would fail
+    d.key("Tab")
+    assert not d.key("v", "\x16") and not d.key("c", "\x03")
+    assert d.edit.text == "250"
+
+
+def test_the_input_box_paints():
+    d = inputbox()
+    s = d.paint()
+    assert (s.width, s.height) == (d.width, d.height)
+    x, y = d.prompt_at
+    assert np.all(s.pixels[y:y + 16, x:x + d.PROMPT_W] == BLACK, axis=2).any()  # the prompt
+    x0, y0, x1, y1 = d.edit.box
+    assert tuple(s.pixels[y0, x0]) == BLACK and tuple(s.pixels[y1, x1]) == BLACK
+    assert tuple(s.pixels[y0 + 3, x0 + TEXT_INSET]) == NAVY  # selected on opening
+    ax0, ay0, ax1, ay1 = d.boxes[0]
+    assert tuple(s.pixels[ay0 + 3, ax0 - 1]) == BLACK  # OK's the default, with its doubled border
+
+
+# -- the number check ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text", ["0", "7", "250", "5000", "007", "12345678901234567890"])
+def test_digits_are_a_whole_number(text):
+    assert is_whole_number(text)
+
+
+@pytest.mark.parametrize("text", ["", " ", "-5", "+5", "1.5", "1,000", "1e3", "0x10", " 5", "5 ",
+                                  "12a", "٣", "۳", "३", "１２", "²",
+                                  "½", "12٣"])
+def test_nothing_else_is(text):
+    assert not is_whole_number(text)

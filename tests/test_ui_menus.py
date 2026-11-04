@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from soundrec import edits
 from soundrec.ui.app import build_menus
 from soundrec.ui.fonts import fonts_dir
 from soundrec.ui.menus import (ARROW, ARROW_RIGHT, ARROW_Y, CASCADE_OVERLAP, SEPARATOR, Item, Menu,
@@ -432,6 +433,7 @@ def _app_without_a_window(device_channels):
     app.devices = types.SimpleNamespace(busy=False, scan=None)
     app.device = types.SimpleNamespace(channels=device_channels) if device_channels else None
     app.meter, app.channels_wanted, app.output = Meter(), None, Target()
+    app.custom_echo = edits.ECHO_CUSTOM_MS
     return app
 
 
@@ -484,7 +486,7 @@ def _app_with_sound(monkeypatch, data, rate=8000):
     take.finish()
     app.doc.take = take
     app.root = types.SimpleNamespace(config=lambda **kw: None, update_idletasks=lambda: None)
-    app.said, app.answers = [], []
+    app.said, app.answers, app.zoom = [], [], 1
     monkeypatch.setattr(app, "redraw", lambda: None, raising=False)
     monkeypatch.setattr(app, "message", lambda text, **kw: app.said.append(text), raising=False)
     monkeypatch.setattr(app, "ask", lambda text, buttons, **kw: app.answers.pop(0), raising=False)
@@ -839,8 +841,11 @@ def test_add_echo_offers_its_delays(monkeypatch):
     app._sync()
     item = app.menus[3].item("echo")
     assert item.enabled
-    assert [(i.label, i.command) for i in item.submenu.items] == [
+    items = item.submenu.items
+    assert [(i.label, i.command) for i in items[:-2]] == [
         (f"{ms} ms", f"echo-{ms}") for ms in (50, 100, 150, 200, 250, 300, 350, 400, 450, 500)]
+    assert items[-2] is SEPARATOR
+    assert (items[-1].label, items[-1].command) == ("&Custom...", "custom-echo")
     app.doc.close()
 
 
@@ -869,6 +874,148 @@ def test_the_delay_chosen_is_the_delay_of_the_echo(monkeypatch):
     out[100] = out[900] = 0
     assert not out.any() and app.doc.dirty and app.position == 1234
     app.doc.close()
+
+
+# -- Effects > Add Echo > Custom... -------------------------------------------------------------
+
+def _answering(app, monkeypatch, *keys):
+    """The box's window stood in for: types each string, pressing Enter after
+    it, and Escape for a None. Keeps what the box opened on, and each refusal."""
+    app.boxes, app.opened_on, app.refused = [], [], []
+
+    def show(box):
+        app.boxes.append(box)
+        app.opened_on.append(box.edit.selected_text)
+        box.message = lambda text, kind="info": app.refused.append(text)
+        for text in keys:
+            if text is None:
+                box.key("Escape")
+                break
+            for c in text:
+                box.key(c, c)
+            if box.key("Return", "\r"):
+                break
+        return box.answer
+
+    monkeypatch.setattr(app, "_show", show, raising=False)
+
+
+def test_custom_is_reached_by_its_mnemonic(monkeypatch):
+    app = _app_with_sound(monkeypatch, np.zeros((4000, 2), np.float32))
+    app._sync()
+    t = Tracker(app.menus)
+    t.alt_key("s")
+    t.key("a", "a")
+    assert t.key("c", "c")[1] == "custom-echo"
+    app.doc.close()
+
+
+def test_a_custom_delay_reaches_the_echo(monkeypatch):
+    a = np.zeros((4000, 2), np.float32)
+    a[100] = [1.0, -1.0]
+    app = _app_with_sound(monkeypatch, a)
+    _answering(app, monkeypatch, "137")
+    app.command("custom-echo")
+    out = app.doc.read(0, 4000).copy()
+    assert np.allclose(out[100 + 1096], [0.5, -0.5])  # 137 ms at 8000 Hz
+    out[100] = out[100 + 1096] = 0
+    assert not out.any() and app.doc.dirty
+    app.doc.close()
+
+
+def test_it_says_why_then_goes_back_for_another_try(monkeypatch):
+    a = np.zeros((4000, 2), np.float32)
+    a[0] = [1.0, 1.0]
+    app = _app_with_sound(monkeypatch, a)
+    _answering(app, monkeypatch, "abc", "1.5", "-1", "", "0", "100")
+    app.command("custom-echo")
+    assert len(app.refused) == 5 and len(app.boxes) == 1
+    assert app.custom_echo == 100
+    assert np.allclose(app.doc.read(800, 1), [0.5, 0.5])
+    app.doc.close()
+
+
+def test_cancel_leaves_the_sound_alone(monkeypatch):
+    a = np.ones((4000, 2), np.float32)
+    app = _app_with_sound(monkeypatch, a)
+    take = app.doc.take
+    monkeypatch.setattr(app, "add_echo", lambda ms: pytest.fail("echoed after Cancel"))
+    _answering(app, monkeypatch, None)
+    app.command("custom-echo")
+    assert app.doc.take is take and not app.doc.dirty and app.custom_echo == 250
+    app.doc.close()
+
+
+def test_a_refused_delay_then_cancel_changes_nothing(monkeypatch):
+    app = _app_with_sound(monkeypatch, np.ones((4000, 2), np.float32))
+    take = app.doc.take
+    _answering(app, monkeypatch, "99999", None)
+    app.command("custom-echo")
+    assert len(app.refused) == 1 and app.doc.take is take and app.custom_echo == 250
+    app.doc.close()
+
+
+def test_it_starts_on_250_then_the_last_delay_used(monkeypatch):
+    app = _app_with_sound(monkeypatch, np.zeros((4000, 2), np.float32))
+    _answering(app, monkeypatch, "120")
+    app.command("custom-echo")
+    assert app.opened_on == ["250"]
+    _answering(app, monkeypatch, None)
+    app.command("custom-echo")
+    assert app.opened_on == ["120"]
+    app.command("echo-300")  # a delay off the menu isn't a custom one
+    _answering(app, monkeypatch, None)
+    app.command("custom-echo")
+    assert app.opened_on == ["120"]
+    app.doc.close()
+
+
+def test_custom_needs_a_sound():
+    app = _app_without_a_window(2)
+    app.root = None
+    app.redraw = lambda: None
+    app.cmd_custom_echo()  # would need a window if it got as far as asking
+
+
+@pytest.mark.parametrize("text, words", [
+    ("", "Type"), ("abc", "whole number"), ("1.5", "whole number"), ("-5", "whole number"),
+    ("٣", "whole number"), ("0", "at least 1 ms"), ("5001", "more than 5000 ms"),
+    ("9" * 255, "more than 5000 ms")])
+def test_the_delay_check_says_whats_wrong(text, words):
+    from soundrec.ui.app import echo_problem
+
+    assert words in echo_problem(text, 10 ** 7, 44100)
+
+
+@pytest.mark.parametrize("text", ["1", "250", "5000", "0250"])
+def test_the_delay_check_passes_these(text):
+    from soundrec.ui.app import echo_problem
+
+    assert echo_problem(text, 10 ** 7, 44100) is None
+
+
+def test_a_delay_the_sound_cant_hold_is_refused_exactly_where_the_echo_would_do_nothing(monkeypatch):
+    from soundrec.ui.app import echo_problem
+
+    a = np.ones((800, 1), np.float32)  # 100 ms at 8000 Hz
+    app = _app_with_sound(monkeypatch, a)
+    assert echo_problem("99", 800, 8000) is None
+    assert "only 100 ms long" in echo_problem("100", 800, 8000)
+    assert "only 100 ms long" in echo_problem("4000", 800, 8000)
+    last = edits.echo(app.doc.take, 0.099)
+    assert last.read(0, 800).max() > 1  # the last accepted delay still does something
+    last.release()
+    none = edits.echo(app.doc.take, 0.100)
+    assert np.array_equal(none.read(0, 800), a)  # the first refused one really wouldn't
+    none.release()
+    app.doc.close()
+
+
+def test_a_sound_too_short_for_any_delay_says_so():
+    from soundrec.ui.app import echo_problem
+
+    assert "only 1 ms long" in echo_problem("1", 8, 8000)  # 1 ms, and a delay of all 8 frames
+    assert "only 1 ms long" in echo_problem("1", 2, 8000)  # rounded up, not "0 ms long"
 
 
 def test_rare_formats_get_a_type_in_the_save_dialog():

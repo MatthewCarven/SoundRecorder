@@ -10,6 +10,7 @@ the UI drains on its tick, since Tk may only be touched from its own thread.
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import queue
 import sys
@@ -27,7 +28,7 @@ from ..takes import default_dir
 from . import face as F
 from .audio import DeviceList, PlaybackError, Player
 from .dialog import MessageBox
-from .dialogs import OutputFormatDialog, RecordingDeviceDialog
+from .dialogs import InputBox, OutputFormatDialog, RecordingDeviceDialog, is_whole_number
 from .document import Document
 from .menus import SEPARATOR, Item, Menu, Tracker, cascade_at, item_at, layout, paint_popup
 from .meter import Meter
@@ -70,7 +71,29 @@ def save_types(suffix: str) -> list:
 
 def echo_items() -> list[Item]:
     """The Add Echo cascade: how long after the sound its repeat comes."""
-    return [Item(f"{ms} ms", f"echo-{ms}") for ms in edits.ECHO_DELAYS_MS]
+    delays = [Item(f"{ms} ms", f"echo-{ms}") for ms in edits.ECHO_DELAYS_MS]
+    return delays + [SEPARATOR, Item("&Custom...", "custom-echo")]
+
+
+def echo_problem(text: str, frames: int, rate: int) -> str | None:
+    """What's wrong with a typed echo delay, for a sound of `frames` at `rate`,
+    or None. An echo keeps the sound's length, so a delay that long or longer
+    would change nothing, and that's better said than silently done."""
+    if not text:
+        return "Type the delay, in milliseconds."
+    if not is_whole_number(text):
+        return ("The delay has to be a whole number of milliseconds, in the digits 0 to 9: "
+                "no sign, decimal point or spaces.")
+    delay = int(text)
+    if delay < edits.ECHO_MIN_MS:
+        return f"The delay has to be at least {edits.ECHO_MIN_MS} ms."
+    if delay > edits.ECHO_MAX_MS:
+        return f"The delay can't be more than {edits.ECHO_MAX_MS} ms."
+    if edits.echo_frames(delay / 1000, rate) >= frames:
+        length = math.ceil(frames * 1000 / rate)
+        return (f"The sound is only {length} ms long, and an echo starting after it ends "
+                "would change nothing. Pick a delay shorter than that.")
+    return None
 
 
 def track_items(channels: int) -> list[Item]:
@@ -159,6 +182,7 @@ class App:
         self.channels_wanted: str | None = None  # a CHANNEL_CHOICES pick; None: the device's own
         self.output = Target()     # Device > Output Format's choice
         self.probes: dict = {}     # the Probe button's answers, by device key
+        self.custom_echo = edits.ECHO_CUSTOM_MS  # Add Echo > Custom...'s last delay, this run
         self._inbox: queue.SimpleQueue = queue.SimpleQueue()
         self.devices = DeviceList(self._inbox.put)
         self._rescan_when_idle = False
@@ -822,6 +846,19 @@ class App:
     def add_echo(self, milliseconds: int) -> None:
         """Effects > Add Echo > n ms."""
         self._edit(lambda take: edits.echo(take, milliseconds / 1000))
+
+    def cmd_custom_echo(self) -> None:
+        """Effects > Add Echo > Custom...: any delay the sound has room for."""
+        self.stop()
+        doc = self.doc
+        if doc.take is None:
+            return
+        box = InputBox(self.root, self.zoom, "Add Echo",
+                       f"Delay in milliseconds ({edits.ECHO_MIN_MS} to {edits.ECHO_MAX_MS}):",
+                       str(self.custom_echo), lambda text: echo_problem(text, doc.frames, doc.rate))
+        if self._show(box) == "ok":
+            self.custom_echo = int(box.result)
+            self.add_echo(self.custom_echo)
 
     def cmd_reverse(self) -> None:
         self._edit(edits.reverse)
