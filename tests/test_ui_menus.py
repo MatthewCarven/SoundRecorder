@@ -419,6 +419,7 @@ def _app_without_a_window(device_channels):
     """Just enough of the App for _sync: no Tk, no devices."""
     import types
 
+    from soundrec.output import Target
     from soundrec.ui import face as F
     from soundrec.ui.app import App
     from soundrec.ui.document import Document
@@ -430,7 +431,7 @@ def _app_without_a_window(device_channels):
     app.doc, app.position, app.recorder, app.player = Document(), 0, None, None
     app.devices = types.SimpleNamespace(busy=False)
     app.device = types.SimpleNamespace(channels=device_channels) if device_channels else None
-    app.meter, app.channels_wanted = Meter(), None
+    app.meter, app.channels_wanted, app.output = Meter(), None, Target()
     return app
 
 
@@ -577,10 +578,9 @@ def test_a_saved_track_holds_exactly_that_channel(monkeypatch, tmp_path):
     app = _app_with_sound(monkeypatch, a)
     out = tmp_path / "track.wav"
     _save_dialog(monkeypatch, out)
-    app.doc.spec = None
-    from soundrec.output import OutputSpec
+    from soundrec.output import OutputSpec, Target
 
-    app._track_spec = lambda name: OutputSpec("WAV", "FLOAT")
+    app.output = Target(OutputSpec("WAV", "FLOAT"))
     app.command("track-3")
     data, rate = sf.read(str(out), dtype="float32", always_2d=True)
     assert rate == 8000 and data.shape == (800, 1)
@@ -684,15 +684,24 @@ def test_all_tracks_asks_before_replacing(monkeypatch, tmp_path):
 
 
 def test_a_failed_all_tracks_writes_nothing_and_says_so(monkeypatch, tmp_path):
+    from soundrec import takes
+
+    class DiskFull(takes.Writer):
+        def write(self, block):
+            if "-2." in self.path.name:
+                raise OSError("disk full")
+            super().write(block)
+
+    monkeypatch.setattr(takes, "Writer", DiskFull)
     a = np.zeros((800, 2), np.float32)
-    app = _app_with_sound(monkeypatch, a, rate=96000)
-    (tmp_path / "band-1.mp3").write_bytes(b"precious")
-    _save_dialog(monkeypatch, tmp_path / "band.mp3")
+    app = _app_with_sound(monkeypatch, a)
+    (tmp_path / "band-1.wav").write_bytes(b"precious")
+    _save_dialog(monkeypatch, tmp_path / "band.wav")
     app.answers = ["yes"]
-    app.cmd_tracks_all()  # MP3 stops at 48 kHz
-    assert "Can't save" in app.said[0]
-    assert (tmp_path / "band-1.mp3").read_bytes() == b"precious"
-    assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == ["band-1.mp3"]
+    app.cmd_tracks_all()
+    assert "disk full" in app.said[0]
+    assert (tmp_path / "band-1.wav").read_bytes() == b"precious"
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == ["band-1.wav"]
     app.doc.close()
 
 
@@ -713,6 +722,76 @@ def test_the_pointer_finds_the_cascade_before_the_popup_under_it():
     assert app._where(0, 0) == ("subitem", 0)
     app.cascade = hit(False)
     assert app._where(0, 0) == ("item", 0)
+
+
+def test_a_track_tells_of_a_rate_its_format_cant_hold(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    app = _app_with_sound(monkeypatch, np.zeros((4410, 2), np.float32), rate=44100)
+    _save_dialog(monkeypatch, tmp_path / "t.opus")
+    app.save_track(0)
+    assert sf.info(str(tmp_path / "t.opus")).samplerate == 48000
+    assert "44,100" in app.said[0] and "48,000" in app.said[0] and app.doc.rate == 44100
+    app.doc.close()
+
+
+def test_save_as_keeps_the_sound_when_nothing_asks_for_a_change(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    app = _app_with_sound(monkeypatch, np.zeros((4410, 2), np.float32), rate=44100)
+    asked = _save_dialog(monkeypatch, tmp_path / "a.flac")
+    take = app.doc.take
+    assert app.cmd_saveas()
+    assert asked[0]["initialfile"] == "untitled.wav" and asked[0]["defaultextension"] == ".wav"
+    assert app.doc.take is take and app.doc.path == tmp_path / "a.flac"
+    assert sf.info(str(tmp_path / "a.flac")).format == "FLAC"
+    app.doc.close()
+
+
+def test_save_as_asks_before_changing_the_sound_for_a_format(monkeypatch, tmp_path):
+    a = np.zeros((4410, 4), np.float32)
+    app = _app_with_sound(monkeypatch, a, rate=44100)
+    app.position = 2205
+    _save_dialog(monkeypatch, tmp_path / "a.mp3", tmp_path / "a.mp3")
+    app.answers = ["no"]
+    assert not app.cmd_saveas()
+    assert (app.doc.rate, app.doc.channels) == (44100, 4) and not (tmp_path / "a.mp3").exists()
+    app.answers = ["yes"]
+    assert app.cmd_saveas()  # MP3 stops at two channels
+    assert (app.doc.rate, app.doc.channels) == (44100, 2) and (tmp_path / "a.mp3").exists()
+    assert app.position == 2205
+    app.doc.close()
+
+
+def test_save_as_follows_the_output_format(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    from soundrec.output import OutputSpec, Target
+
+    app = _app_with_sound(monkeypatch, np.zeros((4800, 2), np.float32), rate=48000)
+    app.output = Target(OutputSpec("FLAC", "PCM_24"), 24000, 1)
+    app.position = 4800
+    app.answers = ["yes"]
+    asked = _save_dialog(monkeypatch, tmp_path / "x.flac")
+    assert app.cmd_saveas()
+    assert asked[0]["initialfile"] == "untitled.flac" and asked[0]["filetypes"][0][1] == "*.flac"
+    with sf.SoundFile(str(tmp_path / "x.flac")) as f:
+        assert (f.subtype, f.samplerate, f.channels) == ("PCM_24", 24000, 1)
+    assert (app.doc.rate, app.doc.channels) == (24000, 1) and app.position == app.doc.frames
+    app.doc.close()
+
+
+def test_a_name_with_another_extension_beats_the_output_format(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    from soundrec.output import OutputSpec, Target
+
+    app = _app_with_sound(monkeypatch, np.zeros((4800, 2), np.float32), rate=48000)
+    app.output = Target(OutputSpec("FLAC", "PCM_24"))
+    _save_dialog(monkeypatch, tmp_path / "x.wav")
+    assert app.cmd_saveas()
+    assert sf.info(str(tmp_path / "x.wav")).subtype == "PCM_16"
+    app.doc.close()
 
 
 def test_edit_and_effects_are_greyed_without_a_sound(monkeypatch):

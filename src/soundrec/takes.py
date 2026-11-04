@@ -24,6 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .convert import Resampler
 from .output import OutputSpec, Writer
 
 DATA = ".f32"
@@ -174,21 +175,25 @@ class Take:
                 w.write(block)
             return w.frames
 
-    def save_tracks(self, tracks: dict, spec: OutputSpec, seed=None) -> int:
+    def save_tracks(self, tracks: dict, spec: OutputSpec, seed=None, rate: int | None = None) -> int:
         """Write channels to mono files of their own, {channel: path}, in one
-        pass over the take; returns the frames in each."""
-        writers = {}
+        pass over the take, at `rate` if the format can't hold the take's own.
+        Returns the frames in each."""
+        rate = rate or self.rate
+        writers, resamplers = {}, {channel: Resampler(self.rate, rate, 1) for channel in tracks}
         try:
             for channel, path in tracks.items():
-                writers[channel] = Writer(path, spec, self.rate, 1,
+                writers[channel] = Writer(path, spec, rate, 1,
                                           None if seed is None else seed + channel)
             for block in self.blocks():
                 for channel, writer in writers.items():
-                    writer.write(block[:, [channel]])
+                    writer.write(resamplers[channel].process(block[:, [channel]]))
+            for channel, writer in writers.items():
+                writer.write(resamplers[channel].flush())
+            return next(iter(writers.values())).frames
         finally:
             for writer in writers.values():
                 writer.close()
-        return self.frames
 
     # -- letting go ---------------------------------------------------------
 

@@ -100,6 +100,15 @@ class OutputSpec:
         return PCM.get(self.subtype, (0, False))[1]
 
 
+@dataclass(frozen=True)
+class Target:
+    """What Device > Output Format asks of Save As. None: leave it to the
+    sound (its rate, its channels) or to the file's name (its format)."""
+    spec: OutputSpec | None = None
+    rate: int | None = None
+    channels: int | None = None
+
+
 def qualities(spec: OutputSpec) -> tuple[Quality, ...]:
     """What the Quality list offers for this format and encoding: often nothing."""
     return FLAC_QUALITIES if spec.format == "FLAC" else QUALITIES.get(spec.subtype, ())

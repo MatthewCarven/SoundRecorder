@@ -21,6 +21,8 @@ from tkinter import filedialog
 import numpy as np
 
 from .. import __version__, edits
+from ..formats import channels_text
+from ..output import Target, channels_for, extension, rate_for, spec_for
 from ..takes import default_dir
 from . import face as F
 from .audio import DeviceList, PlaybackError, Player
@@ -145,6 +147,7 @@ class App:
         self.device = None         # the capture device recordings come from
         self.device_problem: str | None = None
         self.channels_wanted: str | None = None  # a CHANNEL_CHOICES pick; None: the device's own
+        self.output = Target()     # Device > Output Format's choice
         self._inbox: queue.SimpleQueue = queue.SimpleQueue()
         self.devices = DeviceList(self._inbox.put)
         self._rescan_when_idle = False
@@ -413,7 +416,7 @@ class App:
             capture_channels, channels, pick = plan_channels(
                 self.device.channels, out, keep_all=keep_all, exact=exact_channels(self.device))
             rec = Recorder(open_capture(self.device, capture_rate, capture_channels),
-                           self.doc.rate or capture_rate, channels, pick,
+                           self.doc.rate or self.output.rate or capture_rate, channels, pick,
                            meta={"device": self.device.key,
                                  "target": str(self.doc.path) if self.doc.path else None})
             rec.start()
@@ -570,46 +573,64 @@ class App:
             return self.cmd_saveas()
         return self._write(self.doc.path, self.doc.spec)
 
-    def cmd_saveas(self) -> bool:
-        from ..output import spec_for
+    def _spec_for_name(self, name):
+        """The format for a file name: the Output Format choice if the name
+        has its extension; the sound's own if it keeps the sound's extension;
+        otherwise whatever the extension says."""
+        suffix, doc, chosen = Path(name).suffix.lower(), self.doc, self.output.spec
+        if chosen is not None and suffix == extension(chosen):
+            return chosen
+        if doc.spec is not None and doc.path is not None and suffix == doc.path.suffix.lower():
+            return doc.spec
+        return spec_for(name)
 
+    def cmd_saveas(self) -> bool:
         self.stop()
         if self.doc.take is None:
             return True
-        start = self.doc.path
+        start, chosen = self.doc.path, self.output.spec
+        suffix = extension(chosen) if chosen else (start.suffix if start else ".wav")
+        self.root.update_idletasks()  # the menus' popups sit above everything: gone first
         name = filedialog.asksaveasfilename(
-            parent=self.root, title="Save As", filetypes=SAVE_TYPES, defaultextension=".wav",
+            parent=self.root, title="Save As", filetypes=save_types(suffix), defaultextension=suffix,
             initialdir=str(start.parent) if start else None,
-            initialfile=start.name if start else "untitled.wav")
+            initialfile=(start.stem if start else "untitled") + suffix)
         if not name:
             return False
         try:
-            spec = spec_for(name)
+            spec = self._spec_for_name(name)
         except ValueError as e:
             self.message(f"Can't save {Path(name).name}: {e}.", kind="warning")
             return False
-        return self._write(Path(name), spec)
+        doc = self.doc
+        rate = rate_for(spec, self.output.rate or doc.rate)
+        channels = channels_for(spec, self.output.channels or doc.channels)
+        if (rate, channels) != (doc.rate, doc.channels) and not self._confirm_convert(
+                Path(name), rate, channels):
+            return False
+        return self._write(Path(name), spec, rate, channels)
 
-    def _write(self, path: Path, spec) -> bool:
+    def _confirm_convert(self, path: Path, rate: int, channels: int) -> bool:
+        return self.ask(f"{path.name} will be {rate:,} Hz, {channels_text([channels])}.\n\n"
+                        "The sound in this window changes to match, and only Revert to a saved "
+                        "file can bring the original back. Go on?",
+                        [("&Yes", "yes"), ("&No", "no")]) == "yes"
+
+    def _write(self, path: Path, spec, rate: int | None = None, channels: int | None = None) -> bool:
+        before = self.doc.frames
+        self.root.config(cursor="watch")
+        self.root.update_idletasks()
         try:
-            self.doc.save(path, spec)
-        except Exception as e:  # the encoder's reason: MP3 can't go past 48 kHz, and so on
+            self.doc.save(path, spec, rate, channels)
+        except Exception as e:  # the encoder's reason, or the disk's
             self.message(f"Can't save {path.name}.\n\n{e}", kind="warning")
             return False
+        finally:
+            self.root.config(cursor="")
+        self.position = min(same_moment(self.position, before, self.doc.frames), self.doc.frames)
         self._sync()
         self.redraw()
         return True
-
-    def _track_spec(self, name):
-        """A track stays in the sound's own format if the name does; a name
-        with another extension asks for that format instead."""
-        doc = self.doc
-        if doc.spec is not None and doc.path is not None \
-                and Path(name).suffix.lower() == doc.path.suffix.lower():
-            return doc.spec
-        from ..output import spec_for
-
-        return spec_for(name)
 
     def _write_tracks(self, tracks: dict, confirm: bool = False) -> bool:
         """Write {channel: path}: copies, so the sound itself is left alone.
@@ -627,19 +648,23 @@ class App:
             if self.ask(question, [("&Yes", "yes"), ("&No", "no")]) != "yes":
                 return False
         try:
-            spec = self._track_spec(first)
+            spec = self._spec_for_name(first)
         except ValueError as e:
             self.message(f"Can't save {first.name}: {e}.", kind="warning")
             return False
+        rate = rate_for(spec, self.doc.rate)
         self.root.config(cursor="watch")
         self.root.update_idletasks()
         try:
-            self.doc.save_tracks(tracks, spec)
-        except Exception as e:  # the encoder's reason: MP3 can't go past 48 kHz, and so on
+            self.doc.save_tracks(tracks, spec, rate)
+        except Exception as e:  # the encoder's reason, or the disk's
             self.message(f"Can't save {first.name}.\n\n{e}", kind="warning")
             return False
         finally:
             self.root.config(cursor="")
+        if rate != self.doc.rate:
+            self.message(f"{spec.format} can't hold {self.doc.rate:,} Hz, so it's saved at "
+                         f"{rate:,} Hz. The sound here is as it was.")
         return True
 
     def _track_dialog(self, title: str, stem: str, confirm: bool) -> str:

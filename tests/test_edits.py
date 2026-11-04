@@ -176,3 +176,38 @@ def test_fitting_channels():
     assert np.allclose(fit_channels(block[:, :1], 2), [[0.1, 0.1]])
     assert fit_channels(block, 4) is block
     assert fit_channels(block, 2).dtype == np.float32
+
+
+def test_convert_changes_the_rate_and_keeps_the_tone():
+    a = tone(8000, 8000, 441)  # 1 s
+    out = edits.convert(take_of(a), 16000, 1)
+    data = out.read()
+    assert (out.rate, out.channels) == (16000, 1)
+    assert abs(len(data) - 16000) <= 1 and abs(peak_hz(data, 16000) - 441) < 3
+    out.discard()
+
+
+def test_convert_folds_channels_by_the_one_rule():
+    a = noise(2500, 4)
+    out = edits.convert(take_of(a), 8000, 2)
+    assert np.allclose(out.read(), fit_channels(a, 2))
+    out.discard()
+    up = edits.convert(take_of(noise(2500, 1)), 8000, 2)
+    data = up.read()
+    assert np.array_equal(data[:, 0], data[:, 1])
+    up.discard()
+
+
+def test_a_failed_convert_leaves_no_take(monkeypatch, takes_folder):
+    a = noise(100)
+    take = take_of(a)
+
+    def broken(block, channels):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(edits, "fit_channels", broken)
+    with pytest.raises(OSError):
+        edits.convert(take, 8000, 1)
+    assert sorted(p.name for p in takes_folder.iterdir()) == sorted([take.path.name,
+                                                                     take.info_path.name])
+    take.discard()

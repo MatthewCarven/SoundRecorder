@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from ..edits import convert
 from ..ffmpeg import readable
 from ..output import OutputSpec, replacing, spec_for
 from ..takes import Take
@@ -85,24 +86,42 @@ class Document:
         doc.spec = spec
         return doc
 
-    def save(self, path, spec: OutputSpec) -> None:
+    def save(self, path, spec: OutputSpec, rate: int | None = None,
+             channels: int | None = None) -> None:
         """Write the sound to `path`: to a temporary file beside it first, so a
-        failed save can't wreck the file already there."""
+        failed save can't wreck the file already there. At another rate or
+        channel layout, the sound itself changes to match, as Windows 95's
+        Convert Now did, so the window and its file keep agreeing; the new take
+        goes in only once the file is safe, and a failure leaves things as they
+        were."""
         if self.take is None:
             raise ValueError("there's no sound to save")
         path = Path(path)
-        with replacing([path]) as [temporary]:
-            self.take.save(temporary, spec)
+        rate, channels = rate or self.rate, channels or self.channels
+        converted = None
+        if (rate, channels) != (self.rate, self.channels):
+            converted = convert(self.take, rate, channels)
+        try:
+            with replacing([path]) as [temporary]:
+                (converted or self.take).save(temporary, spec)
+        except BaseException:
+            if converted is not None:
+                converted.discard()
+            raise
+        if converted is not None:
+            self.take.discard()
+            self.take = converted
         self.path, self.spec, self.dirty = path, spec, False
 
-    def save_tracks(self, tracks: dict, spec: OutputSpec) -> None:
+    def save_tracks(self, tracks: dict, spec: OutputSpec, rate: int | None = None) -> None:
         """Write channels of the sound to mono files of their own, {channel:
-        path}, all of them or none. The sound stays as it is: this saves
-        copies, so its file, its format and whether it's changed all stand."""
+        path}, all of them or none, at `rate` if the format can't hold the
+        sound's. The sound stays as it is: this saves copies, so its file, its
+        format and whether it's changed all stand."""
         if self.take is None:
             raise ValueError("there's no sound to save")
         with replacing(tracks.values()) as temporaries:
-            self.take.save_tracks(dict(zip(tracks, temporaries)), spec)
+            self.take.save_tracks(dict(zip(tracks, temporaries)), spec, rate=rate)
 
     def splice(self, position: int, recording: Take) -> None:
         """Put a finished recording into the sound at `position`, over what was

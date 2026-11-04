@@ -61,6 +61,19 @@ def file_blocks(path, rate: int, channels: int):
 
 # -- Edit -------------------------------------------------------------------------
 
+def convert(take: Take, rate: int, channels: int) -> Take:
+    """The sound at another rate or channel layout: channels first, by the one
+    rule (fit_channels), so a down-mix resamples fewer of them; then soxr."""
+    resampler = Resampler(take.rate, rate, channels)
+
+    def converted():
+        for block in _range(take, 0, take.frames):
+            yield resampler.process(fit_channels(block, channels))
+        yield resampler.flush()
+
+    return _build(rate, channels, converted(), "convert")
+
+
 def insert(take: Take, at: int, blocks) -> Take:
     """`blocks` (in the take's format) put in at frame `at`; what was there moves along."""
     return _build(take.rate, take.channels,
