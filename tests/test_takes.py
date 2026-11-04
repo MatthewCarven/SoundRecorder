@@ -138,3 +138,31 @@ def test_a_take_survives_its_recorder_being_killed(takes_folder):
     assert found.rate == 44100 and found.channels == 1 and found.frames >= 44100
     assert np.all(np.isfinite(found.read()))
     found.discard()
+
+
+def test_save_tracks_splits_the_channels_across_block_edges(tmp_path):
+    from soundrec.output import OutputSpec
+
+    a = np.random.default_rng(3).uniform(-0.5, 0.5, (70_000, 3)).astype(np.float32)
+    take = Take.create(44100, 3)
+    take.write(a)
+    take.finish()
+    paths = {2: tmp_path / "c.wav", 0: tmp_path / "a.wav"}
+    assert take.save_tracks(paths, OutputSpec("WAV", "FLOAT")) == 70_000
+    for channel, path in paths.items():
+        data, rate = sf.read(str(path), dtype="float32")
+        assert rate == 44100 and np.array_equal(data, a[:, channel])
+    take.discard()
+
+
+def test_save_tracks_keeps_16_bits_exact(tmp_path):
+    from soundrec.output import OutputSpec
+
+    pcm = (np.random.default_rng(4).integers(-32768, 32767, (5000, 2)) / 32768).astype(np.float32)
+    take = Take.create(44100, 2)
+    take.write(pcm)
+    take.finish()
+    take.save_tracks({1: tmp_path / "r.wav"}, OutputSpec("WAV", "PCM_16"), seed=1)
+    data, _ = sf.read(str(tmp_path / "r.wav"), dtype="float32")
+    assert np.array_equal(data, pcm[:, 1])
+    take.discard()

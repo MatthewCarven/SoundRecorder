@@ -108,6 +108,17 @@ See PLAN.md for the why.
 - [ ] Edits run on the UI thread with an hourglass: seconds for an hour of stereo. A thread and a progress display if long sounds make that annoying
 - [ ] Mix sums with no gain change, so two loud sounds go over full scale (kept in the working copy; clipped on save to PCM). Decrease Volume first if that happens
 
+## File > Save Tracks (Matthew, 2026-11-04)
+- [x] Cascades in our menus: the arrow, hover or click, Right / Left / Enter / Esc / mnemonics, a second no-activate popup window treated as the first (`_check_active`, `_bind`, hidden between menus)
+- [x] Track 1 to Track N: that channel alone, mono, in the sound's format and rate; the sound's take, path, spec and dirty flag untouched; temporary file first. Greyed with no sound, while recording or playing, and for one channel
+- [x] All Tracks (Matthew: yes): one dialog, name-1, name-2..., asks before replacing, all or nothing, one pass over the take
+- [x] A track can't replace the file the sound belongs to: it says so and asks for another name
+- [x] Tests, and a real (invisible) window: 30 checks on hover, the rectangles, click to save, the keyboard. The native file dialog was faked there
+- [ ] **Matthew**: try it in the real window, with the real file dialog (steps in WORKLOG, 2026-11-04)
+- [ ] Where a 3.1 cascade really sat is a guess (3 pixels overlapping its parent's right edge; no reference screenshot of one). Easy to change: `CASCADE_OVERLAP` in `menus.py`
+- [ ] A popup is placed against `winfo_screenwidth`, the primary screen, so a window on a second monitor would have its menus pulled back to the first. Existing behaviour, untested here (the laptop has one screen)
+- [ ] A cascade taller than the screen (about 55 tracks at 2x) would run off the bottom; All Tracks is still there
+
 ## Phase 5: formats and dialogs
 - [ ] Recording Device dialog (API, device, native formats, channel names); probe on demand only
 - [ ] Output Format dialog (every `soundfile` format and subtype, quality per codec)

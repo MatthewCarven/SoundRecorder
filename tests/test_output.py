@@ -142,3 +142,29 @@ def test_preflight_catches_what_a_codec_cant_take():
         preflight(spec_for("a.mp3"), 96000, 2)
     with pytest.raises(ValueError, match="can't write OGG Opus"):
         preflight(spec_for("a.opus"), 44100, 2)
+
+
+def test_replacing_puts_files_in_place_only_at_the_end(tmp_path):
+    from soundrec.output import replacing
+
+    a, b = tmp_path / "a.txt", tmp_path / "b.txt"
+    a.write_text("old")
+    with replacing([a, b]) as [ta, tb]:
+        ta.write_text("new a")
+        tb.write_text("new b")
+        assert a.read_text() == "old" and not b.exists()
+    assert a.read_text() == "new a" and b.read_text() == "new b"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.txt", "b.txt"]
+
+
+def test_replacing_leaves_things_as_they_were_on_a_failure(tmp_path):
+    from soundrec.output import replacing
+
+    a, b = tmp_path / "a.txt", tmp_path / "b.txt"
+    a.write_text("old")
+    with pytest.raises(OSError):
+        with replacing([a, b]) as [ta, tb]:
+            ta.write_text("new a")
+            raise OSError("disk full")
+    assert a.read_text() == "old" and not b.exists()
+    assert [p.name for p in tmp_path.iterdir()] == ["a.txt"]

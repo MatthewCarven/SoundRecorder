@@ -174,6 +174,22 @@ class Take:
                 w.write(block)
             return w.frames
 
+    def save_tracks(self, tracks: dict, spec: OutputSpec, seed=None) -> int:
+        """Write channels to mono files of their own, {channel: path}, in one
+        pass over the take; returns the frames in each."""
+        writers = {}
+        try:
+            for channel, path in tracks.items():
+                writers[channel] = Writer(path, spec, self.rate, 1,
+                                          None if seed is None else seed + channel)
+            for block in self.blocks():
+                for channel, writer in writers.items():
+                    writer.write(block[:, [channel]])
+        finally:
+            for writer in writers.values():
+                writer.close()
+        return self.frames
+
     # -- letting go ---------------------------------------------------------
 
     def discard(self) -> None:

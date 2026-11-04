@@ -147,7 +147,8 @@ NAudio has no DirectSound capture and would need two separate encoder packages.
   checkerboard lined up with each button. Drawn inactive with 3.1's menus, ours
   matches it pixel for pixel. Effects' mnemonic is the s.
 - **Menus, as in 3.1**, plus one of ours:
-  - File: New, Open..., Save, Save As..., Revert..., Exit
+  - File: New, Open..., Save, Save As..., Save Tracks (ours: Track 1..., to Track
+    N..., All Tracks...), Revert..., Exit
   - Edit: Insert File..., Mix with File..., Delete Before Current Position, Delete
     After Current Position
   - Effects: Increase Volume (by 25%), Decrease Volume, Increase Speed (by 100%),
@@ -196,6 +197,13 @@ Volume divides by 1.25, so it undoes Increase; speed is a soxr resample; the ech
 (0.25 s, -6 dB, one repeat) is our guess at 3.1's. Deletes ask first. Also brought
 forward from Phase 5 at Matthew's ask: Mono / Stereo / All Channels in the Device
 menu, and playback mixing extra channels into stereo. Waits on Matthew's try.
+
+**File > Save Tracks: built 2026-11-04, Matthew's request.** A cascade in the
+File menu with one item per channel, plus All Tracks (his yes). Our menus gained
+cascades for it (`menus.py`: one level, a second popup window). Each track is
+written mono through `Take.save_tracks`, one pass over the take however many
+tracks, and `output.replacing` puts them in place all together. Save As's rate and
+channel conversion builds on the same two.
 
 **Phase 5: formats and dialogs.** The Recording Device dialog (API, device, native
 formats, channel picker) and the Output Format dialog (container, codec, quality),

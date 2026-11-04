@@ -12,13 +12,12 @@ that with the finished recording.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 
-from ..output import OutputSpec, spec_for
+from ..output import OutputSpec, replacing, spec_for
 from ..takes import Take
 
 READ_BLOCK = 1 << 16
@@ -85,14 +84,18 @@ class Document:
         if self.take is None:
             raise ValueError("there's no sound to save")
         path = Path(path)
-        temporary = path.with_name(path.name + ".saving")
-        try:
+        with replacing([path]) as [temporary]:
             self.take.save(temporary, spec)
-            os.replace(temporary, path)
-        except BaseException:
-            temporary.unlink(missing_ok=True)
-            raise
         self.path, self.spec, self.dirty = path, spec, False
+
+    def save_tracks(self, tracks: dict, spec: OutputSpec) -> None:
+        """Write channels of the sound to mono files of their own, {channel:
+        path}, all of them or none. The sound stays as it is: this saves
+        copies, so its file, its format and whether it's changed all stand."""
+        if self.take is None:
+            raise ValueError("there's no sound to save")
+        with replacing(tracks.values()) as temporaries:
+            self.take.save_tracks(dict(zip(tracks, temporaries)), spec)
 
     def splice(self, position: int, recording: Take) -> None:
         """Put a finished recording into the sound at `position`, over what was

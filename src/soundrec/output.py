@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -137,6 +138,23 @@ class Writer:
 
     def __exit__(self, *exc):
         self.close()
+
+
+@contextmanager
+def replacing(paths):
+    """Temporary names beside `paths`, to write to inside the `with`. They take
+    the real names only if the block finishes, so a failed save can't wreck the
+    files already there, and a set of files arrives all together or not at all."""
+    paths = [Path(p) for p in paths]
+    temporaries = [p.with_name(p.name + ".saving") for p in paths]
+    try:
+        yield temporaries
+        for temporary, path in zip(temporaries, paths):
+            os.replace(temporary, path)
+    except BaseException:
+        for temporary in temporaries:
+            temporary.unlink(missing_ok=True)
+        raise
 
 
 def preflight(spec: OutputSpec, rate: int, channels: int) -> None:

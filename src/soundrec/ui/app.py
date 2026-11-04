@@ -26,7 +26,7 @@ from . import face as F
 from .audio import DeviceList, PlaybackError, Player
 from .dialog import MessageBox
 from .document import Document
-from .menus import SEPARATOR, Item, Menu, Tracker, item_at, paint_popup
+from .menus import SEPARATOR, Item, Menu, Tracker, cascade_at, item_at, layout, paint_popup
 from .meter import Meter
 from .window import AppWindow, PopupWindow, activate, default_zoom, dpi_aware, foreground
 
@@ -54,6 +54,30 @@ def error_log() -> Path:
 CHANNEL_CHOICES = ("mono", "stereo", "all")
 
 
+def save_types(suffix: str) -> list:
+    """The Save dialogs' file types, the one for `suffix` first, so that the
+    dialog's list agrees with the name it starts with."""
+    return sorted(SAVE_TYPES, key=lambda kind: kind[1] != "*" + suffix.lower())
+
+
+def track_items(channels: int) -> list[Item]:
+    """The Save Tracks cascade: every channel, then all of them at once. The
+    first nine tracks have their digit as a mnemonic."""
+    tracks = [Item(f"Track &{n}..." if n < 10 else f"Track {n}...", f"track-{n}")
+              for n in range(1, channels + 1)]
+    return tracks + [SEPARATOR, Item("&All Tracks...", "tracks-all")]
+
+
+def track_paths(path, channels: int) -> dict:
+    """{channel: name-N.ext}: where All Tracks puts each track, from one name."""
+    path = Path(path)
+    return {c: path.with_name(f"{path.stem}-{c + 1}{path.suffix}") for c in range(channels)}
+
+
+def same_file(a, b) -> bool:
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
 def same_moment(at: int, before: int, after: int) -> int:
     """After a speed change, the position of the bit of sound it was at."""
     return round(at * after / before) if before else 0
@@ -71,8 +95,9 @@ def build_menus() -> list[Menu]:
                     Item("&Close", "close", "Alt+F4"), SEPARATOR,
                     Item("S&witch To...", "switch", "Ctrl+Esc")]),
         Menu("&File", [Item("&New", "new"), Item("&Open...", "open"), Item("&Save", "save"),
-                       Item("Save &As...", "saveas"), Item("&Revert...", "revert"), SEPARATOR,
-                       Item("E&xit", "exit")]),
+                       Item("Save &As...", "saveas"),
+                       Item("Save &Tracks", "savetracks", submenu=Menu(None)),
+                       Item("&Revert...", "revert"), SEPARATOR, Item("E&xit", "exit")]),
         Menu("&Edit", [Item("&Insert File...", "insert"), Item("&Mix with File...", "mix"),
                        SEPARATOR,
                        Item("Delete &Before Current Position", "delete-before"),
@@ -104,6 +129,7 @@ class App:
         self.zoom = zoom or default_zoom()
         self.window = AppWindow(root, self.zoom)
         self.popup = PopupWindow(root, self.zoom)
+        self.cascade = PopupWindow(root, self.zoom)
         self.menus = build_menus()
         self.tracker = Tracker(self.menus)
         self.face = F.FaceState(menus=tuple(m.title for m in self.menus[1:]))
@@ -135,6 +161,7 @@ class App:
         self._render()
         root.update_idletasks()
         self.popup.prepare()  # mapped off screen before the main window, which then ends up active
+        self.cascade.prepare()
         w, h = F.WIDTH * self.zoom, F.HEIGHT * self.zoom
         x = (root.winfo_screenwidth() - w) // 2
         y = (root.winfo_screenheight() - h) // 3
@@ -190,6 +217,10 @@ class App:
         file_menu.item("revert").enabled = doc.path is not None and doc.dirty
         edit_menu, effects_menu = self.menus[2], self.menus[3]
         sound = idle and doc.take is not None and length > 0
+        tracks = file_menu.item("savetracks")
+        tracks.enabled = sound and doc.channels > 1
+        if tracks.enabled and len(tracks.submenu.items) != doc.channels + 2:
+            tracks.submenu.items = track_items(doc.channels)
         edit_menu.item("insert").enabled = edit_menu.item("mix").enabled = idle
         edit_menu.item("delete-before").enabled = sound and at > 0
         edit_menu.item("delete-after").enabled = sound and at < length
@@ -244,6 +275,7 @@ class App:
         menu = self.tracker.popup
         if menu is None:
             self.popup.hide()
+            self.cascade.hide()
             return
         surface = paint_popup(menu, self.tracker.item)
         if self.tracker.control_open:
@@ -253,8 +285,17 @@ class App:
         z = self.zoom
         x = self.root.winfo_rootx() + ax * z
         y = self.root.winfo_rooty() + ay * z
-        x = min(x, self.root.winfo_screenwidth() - surface.width * z)
-        self.popup.place(surface, max(x, 0), y)
+        x = max(min(x, self.root.winfo_screenwidth() - surface.width * z), 0)
+        self.popup.place(surface, x, y)
+        submenu = self.tracker.submenu
+        if submenu is None:
+            self.cascade.hide()
+            return
+        hanging = paint_popup(submenu, self.tracker.sub_item)
+        top = layout(menu)[2][self.tracker.sub]
+        self.cascade.place(hanging, *cascade_at(
+            x, y, surface.width, top, hanging.width, hanging.height,
+            self.root.winfo_screenwidth(), self.root.winfo_screenheight(), z))
 
     # -- the tick: what other threads said, and running displays ---------------------
 
@@ -467,6 +508,9 @@ class App:
     # -- commands -------------------------------------------------------------------
 
     def command(self, name: str) -> None:
+        if name.startswith("track-"):  # one for each channel of the sound
+            self.save_track(int(name.removeprefix("track-")) - 1)
+            return
         handler = getattr(self, "cmd_" + name.replace("-", "_"), None)
         if handler is not None:
             handler()
@@ -554,6 +598,78 @@ class App:
         self._sync()
         self.redraw()
         return True
+
+    def _track_spec(self, name):
+        """A track stays in the sound's own format if the name does; a name
+        with another extension asks for that format instead."""
+        doc = self.doc
+        if doc.spec is not None and doc.path is not None \
+                and Path(name).suffix.lower() == doc.path.suffix.lower():
+            return doc.spec
+        from ..output import spec_for
+
+        return spec_for(name)
+
+    def _write_tracks(self, tracks: dict, confirm: bool = False) -> bool:
+        """Write {channel: path}: copies, so the sound itself is left alone.
+        confirm: ask before replacing files, for when the dialog couldn't."""
+        first = next(iter(tracks.values()))
+        for path in tracks.values():
+            if self.doc.path is not None and same_file(path, self.doc.path):
+                self.message(f"{path.name} is the file this sound belongs to, and a track "
+                             "would replace all of it.\n\nPick another name.", kind="warning")
+                return False
+        there = [p.name for p in tracks.values() if p.exists()] if confirm else []
+        if there:
+            question = (f"{there[0]} is already there. Replace it?" if len(there) == 1 else
+                        f"{there[0]} and {len(there) - 1} more are already there. Replace them?")
+            if self.ask(question, [("&Yes", "yes"), ("&No", "no")]) != "yes":
+                return False
+        try:
+            spec = self._track_spec(first)
+        except ValueError as e:
+            self.message(f"Can't save {first.name}: {e}.", kind="warning")
+            return False
+        self.root.config(cursor="watch")
+        self.root.update_idletasks()
+        try:
+            self.doc.save_tracks(tracks, spec)
+        except Exception as e:  # the encoder's reason: MP3 can't go past 48 kHz, and so on
+            self.message(f"Can't save {first.name}.\n\n{e}", kind="warning")
+            return False
+        finally:
+            self.root.config(cursor="")
+        return True
+
+    def _track_dialog(self, title: str, stem: str, confirm: bool) -> str:
+        self.root.update_idletasks()  # the menus' popups sit above everything: gone first
+        start = self.doc.path
+        suffix = start.suffix if start else ".wav"
+        return filedialog.asksaveasfilename(
+            parent=self.root, title=title, filetypes=save_types(suffix), defaultextension=suffix,
+            initialdir=str(start.parent) if start else None, initialfile=stem + suffix,
+            confirmoverwrite=confirm)
+
+    def save_track(self, channel: int) -> None:
+        """File > Save Tracks > Track n: one channel, alone, as a mono file."""
+        self.stop()
+        if self.doc.take is None or channel >= self.doc.channels:
+            return
+        stem = self.doc.path.stem if self.doc.path else "untitled"
+        name = self._track_dialog(f"Save Track {channel + 1}", f"{stem}-{channel + 1}", True)
+        if name:
+            self._write_tracks({channel: Path(name)})
+
+    def cmd_tracks_all(self) -> None:
+        """File > Save Tracks > All Tracks: one dialog, name-1, name-2... The
+        dialog can't warn about those names, so _write_tracks asks instead."""
+        self.stop()
+        if self.doc.take is None:
+            return
+        stem = self.doc.path.stem if self.doc.path else "untitled"
+        name = self._track_dialog("Save All Tracks (adds -1, -2... to the name)", stem, False)
+        if name:
+            self._write_tracks(track_paths(name, self.doc.channels), confirm=True)
 
     def cmd_revert(self) -> None:
         self.stop()
@@ -722,13 +838,14 @@ class App:
     # -- mouse ------------------------------------------------------------------------
 
     def _bind(self) -> None:
-        for label in (self.window.label, self.popup.label):
+        for label in (self.window.label, self.popup.label, self.cascade.label):
             label.bind("<ButtonPress-1>", self._press)
             label.bind("<Double-Button-1>", self._double)
             label.bind("<Motion>", self._motion)
             label.bind("<B1-Motion>", self._motion)
             label.bind("<ButtonRelease-1>", self._release)
-        for top in (self.root, self.popup.top):  # keys reach the popup only if it's activated
+        # Keys reach a popup only if it's activated.
+        for top in (self.root, self.popup.top, self.cascade.top):
             top.bind("<KeyPress>", self._key)
             top.bind("<KeyRelease>", self._key_up)
             top.bind("<FocusIn>", lambda e: self.root.after(1, self._check_active))
@@ -736,13 +853,13 @@ class App:
 
     def _check_active(self) -> None:
         """Whether the window is the active one: another program or a message
-        box makes it inactive (white caption, menus closed). The menu popup
-        mustn't: should it ever be activated (it was once, on Matthew's
+        box makes it inactive (white caption, menus closed). A menu popup
+        mustn't: should one ever be activated (it was once, on Matthew's
         laptop, and File > Exit then did nothing, its menu closed by the
         main window losing the focus), hand the activation straight back."""
         if self._closing:
             return
-        if foreground() == self.popup.hwnd:
+        if foreground() in (self.popup.hwnd, self.cascade.hwnd):
             activate(self.window.hwnd)
         active = foreground() == self.window.hwnd
         if active != self.face.active:
@@ -752,7 +869,12 @@ class App:
             self.redraw()
 
     def _where(self, x_root: int, y_root: int):
-        """For the menus: what's under the pointer."""
+        """For the menus: what's under the pointer. The cascade first: it
+        overlaps its parent, and it's drawn on top."""
+        submenu = self.tracker.submenu
+        if submenu is not None and self.cascade.visible and self.cascade.contains(x_root, y_root):
+            x, y = self.cascade.local(x_root, y_root)
+            return ("subitem", item_at(submenu, x, y))
         if self.tracker.opened and self.popup.visible and self.popup.contains(x_root, y_root):
             x, y = self.popup.local(x_root, y_root)
             return ("item", item_at(self.tracker.popup, x, y))
@@ -811,9 +933,9 @@ class App:
 
     def _motion(self, e) -> None:
         if self.tracker.opened or self.tracker.tracking:
-            before = (self.tracker.current, self.tracker.item, self.tracker.opened)
+            before = self.tracker.state
             self.tracker.motion(self._where(e.x_root, e.y_root))
-            if before != (self.tracker.current, self.tracker.item, self.tracker.opened):
+            if before != self.tracker.state:
                 self.redraw()
             return
         if self._held is None:

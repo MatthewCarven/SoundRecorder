@@ -4,14 +4,18 @@ Windows 11 draws Tk's native menus in its own style, so these are ours: the
 titles live in the window's menu bar (face.py draws them), and an open menu
 is a white popup with a black border, 18-pixel items with the text at the
 top, and 7-pixel separators, measured from a 3.1 screenshot. No shadow:
-3.1's menus had none.
+3.1's menus had none. An item can open a cascade, a second popup beside it,
+marked with a right-pointing arrow; one level is all this window needs.
 
 The Tracker follows 3.1's rules. Mouse: press a title to open its menu,
 drag to an item and let go to choose it, or click and then click again;
 clicking the open menu's title again closes it. Keyboard: Alt or F10 lights
 the first title, the arrows move, Enter or a mnemonic opens and chooses,
 Escape backs out a step; Alt+letter opens a menu straight away, Alt+Space
-the control menu, which sits left of File.
+the control menu, which sits left of File. Cascades open as soon as the
+pointer rests on their item, or by click, Enter, the Right arrow or the
+mnemonic; Left and Escape close them, and Right from inside one moves on to
+the next menu.
 """
 
 from __future__ import annotations
@@ -30,6 +34,9 @@ TEXT_X = 16       # from the popup's left edge, border included
 ACCEL_GAP = 8     # between the widest label and the accelerator column
 RIGHT_MARGIN = 15  # after the widest text, border included
 CHECK_X, CHECK_Y = 4, 5  # the tick's top-left, from the item's
+ARROW_RIGHT = 10   # the cascade arrow's left edge, in from the popup's right edge
+ARROW_Y = 5        # its top, from the item's
+CASCADE_OVERLAP = 3  # a cascade's left edge sits this far inside its parent's right edge
 CHECK = np.array([[c == "#" for c in row] for row in (
     "......#",
     ".....##",
@@ -38,6 +45,14 @@ CHECK = np.array([[c == "#" for c in row] for row in (
     "#####..",
     ".###...",
     "..#....")])
+ARROW = np.array([[c == "#" for c in row] for row in (
+    "#...",
+    "##..",
+    "###.",
+    "####",
+    "###.",
+    "##..",
+    "#...")])
 
 
 @dataclass
@@ -47,6 +62,7 @@ class Item:
     accel: str = ""             # shown, not bound: the app binds its own keys
     enabled: bool = True
     checked: bool = False       # a tick in the left margin
+    submenu: Menu | None = None  # a cascade: choosing the item opens it
 
     @property
     def separator(self) -> bool:
@@ -118,6 +134,8 @@ def paint_popup(menu: Menu, highlight: int | None = None) -> Surface:
         s.text(font, TEXT_X, top, text, ink, underline=mnemonic, underline_shift=-1)
         if item.accel:
             s.text(font, accel_x, top, item.accel, ink)
+        if item.submenu is not None:
+            s.mask(width - ARROW_RIGHT, top + ARROW_Y, ARROW, ink)
     return s
 
 
@@ -134,6 +152,19 @@ def item_at(menu: Menu, x: int, y: int) -> int | None:
     return None
 
 
+def cascade_at(parent_x: int, parent_y: int, parent_width: int, item_top: int, width: int,
+               height: int, screen_width: int, screen_height: int, zoom: int) -> tuple[int, int]:
+    """Where a cascade's popup goes on the screen, given its parent popup's
+    corner in screen pixels; parent_width, item_top, width and height are in
+    the popups' own pixels. Its first item lines up with the item it hangs
+    from, and it hangs to the left when the screen has no room on the right."""
+    x = parent_x + (parent_width - CASCADE_OVERLAP) * zoom
+    if x + width * zoom > screen_width:
+        x = parent_x + (CASCADE_OVERLAP - width) * zoom
+    y = min(parent_y + (item_top - 1) * zoom, screen_height - height * zoom)
+    return max(x, 0), max(y, 0)
+
+
 # -- tracking ---------------------------------------------------------------------
 
 class Tracker:
@@ -142,8 +173,9 @@ class Tracker:
     `menus` in Left/Right order: the control menu (title None), if any, then
     the bar's menus. Events say where the pointer is: ("title", n) for the
     bar's nth title, ("control",) for the control-menu box, ("item", n) for an
-    item of the open popup (n None: on the popup but not on an item), or None
-    for anywhere else. Methods that can choose an item return its command.
+    item of the open popup (n None: on the popup but not on an item),
+    ("subitem", n) the same for an open cascade, or None for anywhere else.
+    Methods that can choose an item return its command.
     """
 
     def __init__(self, menus: list[Menu]):
@@ -151,6 +183,8 @@ class Tracker:
         self.current: int | None = None  # the lit menu
         self.opened = False              # its popup is showing
         self.item: int | None = None
+        self.sub: int | None = None      # the open menu's item whose cascade is showing
+        self.sub_item: int | None = None  # the highlighted item in the cascade
         self.tracking = False            # the mouse button is down
         self._close_on_release = False   # the press was on the open menu's title
 
@@ -163,6 +197,15 @@ class Tracker:
     @property
     def popup(self) -> Menu | None:
         return self.menus[self.current] if self.opened else None
+
+    @property
+    def submenu(self) -> Menu | None:
+        return None if self.sub is None else self.menus[self.current].items[self.sub].submenu
+
+    @property
+    def state(self) -> tuple:
+        """Everything that changes what's drawn: compare it to see if anything did."""
+        return self.current, self.opened, self.item, self.sub, self.sub_item
 
     @property
     def bar_highlight(self) -> int | None:
@@ -192,14 +235,36 @@ class Tracker:
 
     def close(self) -> None:
         self.current, self.opened, self.item = None, False, None
+        self.sub = self.sub_item = None
         self.tracking = self._close_on_release = False
 
     def _open(self, index: int, first_item: bool) -> None:
         self.current, self.opened = index, True
-        self.item = self._step(index, -1, 1) if first_item else None
+        self.sub = self.sub_item = None
+        self.item = self._step(self.menus[index], -1, 1) if first_item else None
 
-    def _step(self, index: int, start: int | None, step: int) -> int | None:
-        items = self.menus[index].items
+    def _cascade(self, item: int, first_item: bool) -> bool:
+        """Open an item's cascade. False if it has none or it's greyed."""
+        menu = self.menus[self.current].items[item]
+        if menu.submenu is None or not menu.enabled:
+            return False
+        self.sub = item
+        self.sub_item = self._step(menu.submenu, -1, 1) if first_item else None
+        return True
+
+    def _pointing_at(self, item: int | None) -> None:
+        """The pointer is on an item of the open menu, or (None) on its border
+        or a separator."""
+        if item is None and self.sub is not None:
+            return  # on its way across the border to the cascade: leave it open
+        self.item, self.sub_item = item, None
+        if item != self.sub:
+            self.sub = None
+            if item is not None:
+                self._cascade(item, first_item=False)
+
+    def _step(self, menu: Menu, start: int | None, step: int) -> int | None:
+        items = menu.items
         n = len(items)
         i = start if start is not None else (-1 if step > 0 else n)
         for _ in range(n):
@@ -208,11 +273,15 @@ class Tracker:
                 return i
         return None
 
-    def _choose(self, index: int, item: int | None) -> str | None:
+    def _choose(self, menu: Menu, item: int | None) -> str | None:
         if item is None:
             return None
-        chosen = self.menus[index].items[item]
+        chosen = menu.items[item]
         if chosen.separator or not chosen.enabled:
+            return None
+        if chosen.submenu is not None:
+            if self.sub != item:
+                self._cascade(item, first_item=True)
             return None
         self.close()
         return chosen.command
@@ -227,7 +296,10 @@ class Tracker:
                 self._open(index, first_item=False)
             self.tracking = True
         elif where is not None and where[0] == "item" and self.opened:
-            self.item = where[1]
+            self._pointing_at(where[1])
+            self.tracking = True
+        elif where is not None and where[0] == "subitem" and self.sub is not None:
+            self.sub_item = where[1]
             self.tracking = True
         else:
             self.close()  # a click anywhere else just closes the menus
@@ -242,19 +314,26 @@ class Tracker:
                 self._open(index, first_item=False)
                 self._close_on_release = False
             elif self.tracking:
-                self.item = None
+                self.item = self.sub = self.sub_item = None
         elif where is not None and where[0] == "item" and self.opened:
-            self.item = where[1]
+            self._pointing_at(where[1])
+        elif where is not None and where[0] == "subitem" and self.sub is not None:
+            self.sub_item = where[1]
         elif self.tracking:
-            self.item = None
+            if self.sub is not None:
+                self.sub_item = None
+            else:
+                self.item = None
 
     def release(self, where) -> str | None:
         if not self.tracking:
             return None
         self.tracking = False
+        if where is not None and where[0] == "subitem" and self.sub is not None:
+            return self._choose(self.submenu, where[1])
         if where is not None and where[0] == "item" and self.opened:
             # On a disabled item, a separator or the border, the menu stays open.
-            return None if where[1] is None else self._choose(self.current, where[1])
+            return self._choose(self.menus[self.current], where[1])
         index = self._index(where)
         if index is not None:
             if self._close_on_release:
@@ -288,7 +367,9 @@ class Tracker:
             return False, None
         n = len(self.menus)
         if keysym == "Escape":
-            if self.opened:
+            if self.sub is not None:
+                self.sub = self.sub_item = None
+            elif self.opened:
                 if self.menus[self.current].title is None:
                     self.close()  # the control menu has no title to fall back to
                 else:
@@ -297,6 +378,15 @@ class Tracker:
                 self.close()
             return True, None
         if keysym in ("Left", "Right"):
+            if keysym == "Left" and self.sub is not None:
+                self.sub = self.sub_item = None
+                return True, None
+            if keysym == "Right" and self.sub is not None and self.sub_item is None:
+                self.sub_item = self._step(self.submenu, -1, 1)  # the pointer opened it
+                return True, None
+            if keysym == "Right" and self.opened and self.sub is None and self.item is not None \
+                    and self._cascade(self.item, first_item=True):
+                return True, None
             index = (self.current + (1 if keysym == "Right" else -1)) % n
             if self.opened:
                 self._open(index, first_item=True)
@@ -315,14 +405,28 @@ class Tracker:
                         self._open(i, first_item=True)
                         return True, None
             return True, None  # swallowed, as 3.1 did (with a beep)
+        step = 1 if keysym == "Down" else -1
+        if self.sub is not None:  # the keys go to the cascade while it's open
+            if keysym in ("Down", "Up"):
+                self.sub_item = self._step(self.submenu, self.sub_item, step)
+                return True, None
+            if keysym in ("Return", "KP_Enter"):
+                return True, self._choose(self.submenu, self.sub_item)
+            if char and char.isprintable():
+                for i, item in enumerate(self.submenu.items):
+                    if item.mnemonic == char.lower():
+                        self.sub_item = i
+                        return True, self._choose(self.submenu, i)
+            return True, None
+        menu = self.menus[self.current]
         if keysym in ("Down", "Up"):
-            self.item = self._step(self.current, self.item, 1 if keysym == "Down" else -1)
+            self.item = self._step(menu, self.item, step)
             return True, None
         if keysym in ("Return", "KP_Enter"):
-            return True, self._choose(self.current, self.item)
+            return True, self._choose(menu, self.item)
         if char and char.isprintable():
-            for i, item in enumerate(self.menus[self.current].items):
+            for i, item in enumerate(menu.items):
                 if item.mnemonic == char.lower():
                     self.item = i
-                    return True, self._choose(self.current, i)
+                    return True, self._choose(menu, i)
         return True, None

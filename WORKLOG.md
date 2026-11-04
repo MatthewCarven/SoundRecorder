@@ -429,3 +429,61 @@ he recorded the H2n in 4-channel mode on Device > All 4 Channels and played it
 back on headphones: works. "Seems to work well" for the window as a whole; the
 Edit and Effects commands one by one, and whether the echo sounds like 3.1's,
 are still to be confirmed.
+
+## 2026-11-04: File > Save Tracks
+
+Matthew asked for "File->Save Tracks->Track 1 through 4", and said yes to an All
+Tracks item too (asked first, as the brief said), so four tracks needn't mean four
+dialogs. A track is one channel of the sound.
+
+**Cascades.** The menus had none. `Item.submenu` holds one, one level deep, and the
+Tracker gained `sub` (which item's cascade is showing) and `sub_item`. Hover opens
+it at once, with no timer, so the Tracker stays free of Tk. Crossing the parent's
+border on the way to the cascade leaves it open; that border is a real pixel between
+the two. Hovering another item closes it. Right from inside moves to the next menu,
+Left and Esc back out one step, and Right steps into a cascade the pointer opened.
+Greyed items open nothing. The arrow sits in the existing right margin, so the
+measured widths don't move.
+
+The second popup is a second `PopupWindow`, treated as the first because of the
+File > Exit bug: WS_EX_NOACTIVATE, mapped once before the main window, truly hidden
+between menus, handed back at once in `_check_active` if it's ever activated, keys
+reaching it sent to the same handlers.
+
+**Saving.** `Take.save_tracks({channel: path}, spec)` makes one pass over the take
+however many tracks, so a 3-hour 4-channel take isn't read four times.
+`output.replacing(paths)` is `Document.save`'s temporary-file step, pulled out and
+made to handle several files: all of them arrive or none do, and a failed write
+leaves what was there. `Document.save_tracks` changes nothing on the document.
+
+- A track keeps the sound's own format if the name keeps its extension (so a 24-bit
+  FLAC gives 24-bit FLAC tracks, where `spec_for` would pick FLAC's default); another
+  extension picks that format. A new recording has no format yet: `.wav`.
+- Refused: a track over the sound's own file. The dialog would have asked and the
+  sound would still say "saved", with its 4-channel file now a mono one.
+- All Tracks turns off the dialog's overwrite question (it would ask about `name.wav`,
+  which isn't written) and asks itself, in a 3.1 box, about the real names.
+- Over the top of 48 kHz, MP3 fails with libsndfile's own reason. Save As's rate
+  conversion is where that gets a better answer.
+
+**The real window** (invisible, `-alpha 0`, DeviceList faked so PortAudio never
+started, foreground handed straight back; native file dialog faked): 30 checks
+passed. Hover, the cascade's real rectangle against its parent's (first item level
+with Save Tracks), the highlight's pixels, a click writing the track in the sound's
+own format, then the keyboard path and All Tracks. It found what the unit tests
+couldn't: **both popups were still showing when the file dialog was called**,
+because the redraw that hides them was only queued for idle time. Fixed with
+`update_idletasks` first.
+
+263 tests. **Not tried by Matthew yet, and the real file dialog hasn't been tried
+by anyone.** To try it:
+
+1. Launch, and open a 4-channel sound, or record one (Device > All 4 Channels).
+2. Open File, and rest the pointer on Save Tracks: the cascade should open at once.
+3. Move across to Track 2, click, save it. Open that file in anything: one channel.
+4. Back in the first sound: its title and length should be as they were, and if it
+   had unsaved changes, it should still ask about them on Exit.
+5. File > Save Tracks > All Tracks, name it `test`: `test-1` to `test-4` appear.
+   Do it again: it should ask before replacing them.
+6. Alt+F, T, then Right, Left, Esc: check that feels like the other menus.
+7. Is the cascade where you'd expect? Its position is my guess at 3.1's.

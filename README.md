@@ -39,6 +39,12 @@ or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
   peak-hold tick. Stopped, the box is 3.1's own.
 - **File**: New, Open (anything libsndfile reads), Save, Save As (the extension
   picks the format: WAV, FLAC, MP3, Ogg, Opus, AIFF...), Revert, Exit.
+- **File > Save Tracks** (ours; a sound of two or more channels): Track 1 to Track
+  N each save that one channel as a mono file, and All Tracks saves them all from
+  one dialog, as name-1, name-2... They keep the sound's own format and rate if
+  the extension stays the same, and another extension picks another format. They
+  save copies: the sound, its file and its changed-or-not state stay as they
+  were. All Tracks asks before replacing any file, and writes all of them or none.
 - **Edit**: Insert File and Mix with File at the position (the file is converted
   to the sound's rate and channels; into an empty window it becomes the sound),
   Delete Before / After Current Position (they ask first: only Revert brings it
@@ -61,7 +67,9 @@ or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
   Alt+Tab work as for any window. The control-menu box opens 3.1's control menu
   (double-click closes). Menus work with the mouse (press and drag, or click) and
   the keyboard (Alt or F10, the arrows, Enter, the underlined letters, Alt+letter,
-  Alt+Space for the control menu, Esc).
+  Alt+Space for the control menu, Esc). An item with an arrow opens a cascade: rest
+  the pointer on it, click it, or press Right, Enter or its letter; Left or Esc
+  closes it, and Right from inside it moves on to the next menu.
 
 ## The command line
 

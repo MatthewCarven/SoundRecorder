@@ -5,7 +5,8 @@ import pytest
 
 from soundrec.ui.app import build_menus
 from soundrec.ui.fonts import fonts_dir
-from soundrec.ui.menus import SEPARATOR, Item, Menu, Tracker, item_at, layout, paint_popup
+from soundrec.ui.menus import (ARROW, ARROW_RIGHT, ARROW_Y, CASCADE_OVERLAP, SEPARATOR, Item, Menu,
+                               Tracker, cascade_at, item_at, layout, paint_popup)
 from soundrec.ui.raster import BLACK, GREY, NAVY, WHITE
 
 pytestmark = pytest.mark.skipif(not (fonts_dir() / "vgasys.fon").exists(),
@@ -49,6 +50,47 @@ def test_item_at():
     assert item_at(menu, 10, tops[3] + 3) is None  # separator
     assert item_at(menu, 0, tops[1] + 5) is None   # border
     assert item_at(menu, 10, 500) is None
+
+
+def cascading():
+    tracks = Menu(None, [Item("Track &1...", "track-1"), Item("Track &2...", "track-2", enabled=False),
+                         SEPARATOR, Item("&All Tracks...", "tracks-all")])
+    return [Menu("&File", [Item("&New", "new"), Item("Save &Tracks", "tracks", submenu=tracks),
+                           Item("&Greyed", "greyed", enabled=False, submenu=Menu(None, [Item("&X", "x")])),
+                           SEPARATOR, Item("E&xit", "exit")]),
+            Menu("&Help", [Item("&About...", "about")])]
+
+
+def test_an_item_with_a_cascade_gets_an_arrow_inside_the_margin():
+    menu = cascading()[0]
+    plain = Menu("&File", [Item(i.label, i.command, enabled=i.enabled) for i in menu.items])
+    width, _, tops = layout(menu)
+    assert width == layout(plain)[0]  # measured menus stay as they were
+
+    def arrow(s, item):
+        x, y = width - ARROW_RIGHT, tops[item] + ARROW_Y
+        h, w = ARROW.shape
+        return s.pixels[y:y + h, x:x + w][ARROW]
+
+    s = paint_popup(menu)
+    assert np.all(arrow(s, 1) == BLACK)
+    assert np.all(arrow(s, 2) == GREY)    # a greyed item's arrow is grey too
+    assert np.all(arrow(s, 0) == WHITE)   # no cascade, no arrow
+    assert np.all(arrow(paint_popup(menu, highlight=1), 1) == WHITE)
+
+
+def test_a_cascades_first_item_lines_up_with_its_parent():
+    x, y = cascade_at(100, 50, 120, 37, 80, 60, 1920, 1080, 2)
+    assert x == 100 + (120 - CASCADE_OVERLAP) * 2
+    assert y + 1 * 2 == 50 + 37 * 2  # past each popup's own one-pixel top border
+
+
+def test_a_cascade_stays_on_the_screen():
+    x, _ = cascade_at(1700, 50, 100, 19, 80, 60, 1920, 1080, 2)
+    assert x == 1700 + (CASCADE_OVERLAP - 80) * 2  # no room on the right: it hangs left
+    _, y = cascade_at(100, 1000, 100, 19, 80, 60, 1920, 1080, 2)
+    assert y == 1080 - 60 * 2
+    assert cascade_at(0, 0, 10, 0, 500, 700, 200, 300, 2) == (0, 0)
 
 
 # -- the mouse ------------------------------------------------------------------------
@@ -105,6 +147,103 @@ def test_the_border_and_separators_keep_the_menu_open():
     assert t.release(("item", None)) is None and t.opened
 
 
+def test_hovering_opens_a_cascade_and_the_parent_stays_lit():
+    t = Tracker(cascading())
+    t.press(("title", 0))
+    t.release(("title", 0))
+    t.motion(("item", 0))
+    assert t.submenu is None
+    t.motion(("item", 1))
+    assert t.sub == 1 and t.submenu.items[0].command == "track-1" and t.sub_item is None
+    t.motion(("subitem", 0))
+    assert t.item == 1 and t.sub_item == 0
+    t.motion(("subitem", None))
+    assert t.sub_item is None and t.submenu is not None
+    t.motion(("item", 1))
+    assert t.sub == 1 and t.sub_item is None
+    t.press(("item", 1))
+    assert t.release(("item", 1)) is None and t.submenu is not None  # a click just keeps it open
+    t.motion(("subitem", 0))
+    t.press(("subitem", 0))
+    assert t.release(("subitem", 0)) == "track-1"
+    assert not t.active and t.submenu is None
+
+
+def test_crossing_the_border_on_the_way_to_a_cascade_keeps_it_open():
+    t = Tracker(cascading())
+    t.press(("title", 0))
+    t.release(("title", 0))
+    t.motion(("item", 1))
+    t.motion(("item", None))
+    assert t.item == 1 and t.submenu is not None
+
+
+def test_hovering_another_item_closes_the_cascade():
+    t = Tracker(cascading())
+    t.press(("title", 0))
+    t.release(("title", 0))
+    t.motion(("item", 1))
+    t.motion(("item", 0))
+    assert t.submenu is None and t.item == 0
+
+
+def test_a_greyed_item_opens_no_cascade():
+    t = Tracker(cascading())
+    t.press(("title", 0))
+    t.release(("title", 0))
+    t.motion(("item", 2))
+    assert t.submenu is None and t.item == 2
+    t.press(("item", 2))
+    assert t.release(("item", 2)) is None and t.submenu is None and t.opened
+
+
+def test_dragging_from_the_title_into_a_cascade_chooses():
+    t = Tracker(cascading())
+    t.press(("title", 0))
+    t.motion(("item", 1))
+    t.motion(("subitem", 3))
+    assert t.release(("subitem", 3)) == "tracks-all"
+
+
+def test_letting_go_on_a_cascades_greyed_item_or_border_keeps_it_open():
+    t = Tracker(cascading())
+    t.press(("title", 0))
+    t.motion(("item", 1))
+    assert t.release(("subitem", 1)) is None and t.submenu is not None
+    t.press(("subitem", None))
+    assert t.release(("subitem", None)) is None and t.submenu is not None
+    t.press(("subitem", 2))  # the separator
+    assert t.release(("subitem", 2)) is None and t.submenu is not None
+
+
+def test_dragging_off_a_cascade_and_letting_go_closes_everything():
+    t = Tracker(cascading())
+    t.press(("title", 0))
+    t.motion(("item", 1))
+    t.motion(("subitem", 0))
+    t.motion(None)
+    assert t.sub_item is None and t.submenu is not None
+    assert t.release(None) is None and not t.active
+
+
+def test_a_click_outside_closes_the_cascade_too():
+    t = Tracker(cascading())
+    t.press(("title", 0))
+    t.release(("title", 0))
+    t.motion(("item", 1))
+    t.press(None)
+    assert not t.active and t.submenu is None
+
+
+def test_moving_to_another_title_closes_the_cascade():
+    t = Tracker(cascading())
+    t.press(("title", 0))
+    t.release(("title", 0))
+    t.motion(("item", 1))
+    t.motion(("title", 1))
+    assert t.bar_highlight == 1 and t.submenu is None
+
+
 def test_the_control_box_opens_the_control_menu():
     t = Tracker(menus())
     t.press(("control",))
@@ -150,6 +289,78 @@ def test_mnemonics():
     t.key("e", "e")
     assert t.bar_highlight == 1 and t.opened
     assert not Tracker(menus()).alt_key("q")
+
+
+def test_the_arrows_open_and_close_a_cascade():
+    t = Tracker(cascading())
+    t.alt_key("f")
+    t.key("Right")
+    assert t.bar_highlight == 1 and t.submenu is None  # New has no cascade: on to Help
+    t.key("Left")
+    t.key("Down")
+    assert t.item == 1
+    t.key("Right")
+    assert t.submenu is not None and t.sub_item == 0
+    t.key("Down")
+    assert t.sub_item == 1  # greyed, still lit
+    t.key("Down")
+    assert t.sub_item == 3  # over the separator
+    t.key("Left")
+    assert t.submenu is None and t.item == 1 and t.bar_highlight == 0
+
+
+def test_right_from_inside_a_cascade_moves_to_the_next_menu():
+    t = Tracker(cascading())
+    t.alt_key("f")
+    t.key("Down")
+    t.key("Right")
+    t.key("Right")
+    assert t.bar_highlight == 1 and t.opened and t.submenu is None
+
+
+def test_right_steps_into_a_cascade_the_pointer_opened():
+    t = Tracker(cascading())
+    t.press(("title", 0))
+    t.release(("title", 0))
+    t.motion(("item", 1))
+    assert t.sub_item is None
+    t.key("Right")
+    assert t.sub_item == 0 and t.bar_highlight == 0
+
+
+def test_escape_closes_the_cascade_first():
+    t = Tracker(cascading())
+    t.alt_key("f")
+    t.key("Down")
+    t.key("Right")
+    t.key("Escape")
+    assert t.submenu is None and t.opened and t.item == 1
+    t.key("Escape")
+    assert t.active and not t.opened
+
+
+def test_enter_and_the_mnemonic_open_a_cascade_and_choose_from_it():
+    t = Tracker(cascading())
+    t.alt_key("f")
+    t.key("Down")
+    assert t.key("Return") == (True, None)
+    assert t.submenu is not None and t.sub_item == 0
+    assert t.key("Return") == (True, "track-1")
+    assert not t.active
+    t.alt_key("f")
+    assert t.key("t", "t") == (True, None) and t.submenu is not None
+    assert t.key("2", "2") == (True, None) and t.opened  # Track 2 is greyed
+    assert t.key("a", "a") == (True, "tracks-all")
+
+
+def test_a_greyed_item_ignores_the_right_arrow_and_enter():
+    t = Tracker(cascading())
+    t.alt_key("f")
+    t.key("Down"), t.key("Down")
+    assert t.item == 2
+    assert t.key("Return") == (True, None) and t.submenu is None
+    t.key("Right")
+    assert t.bar_highlight == 1 and t.submenu is None
 
 
 def test_escape_backs_out_a_step():
@@ -281,6 +492,227 @@ def _app_with_sound(monkeypatch, data, rate=8000):
 
 def enabled(app, menu):
     return {i.command for i in app.menus[menu].items if not i.separator and i.enabled}
+
+
+def tracks_item(app):
+    return app.menus[1].item("savetracks")
+
+
+def test_save_tracks_lists_every_channel_and_all_of_them(monkeypatch):
+    app = _app_with_sound(monkeypatch, np.zeros((800, 4), np.float32))
+    app._sync()
+    item = tracks_item(app)
+    assert item.enabled
+    assert [(i.label, i.command) for i in item.submenu.items if not i.separator] == [
+        ("Track &1...", "track-1"), ("Track &2...", "track-2"), ("Track &3...", "track-3"),
+        ("Track &4...", "track-4"), ("&All Tracks...", "tracks-all")]
+    assert item.submenu.items[4].separator
+    app.doc.close()
+
+
+def test_tracks_past_nine_have_no_mnemonic():
+    from soundrec.ui.app import track_items
+
+    items = [i for i in track_items(12) if not i.separator]
+    letters = [i.mnemonic for i in items if i.mnemonic]
+    assert len(letters) == len(set(letters)) == 10 and items[9].label == "Track 10..."
+
+
+def test_save_tracks_is_greyed_without_a_sound_or_for_one_channel(monkeypatch):
+    app = _app_without_a_window(2)
+    app._sync()
+    assert not tracks_item(app).enabled
+    mono = _app_with_sound(monkeypatch, np.zeros((800, 1), np.float32))
+    mono._sync()
+    assert not tracks_item(mono).enabled
+    mono.doc.close()
+
+
+def test_save_tracks_is_greyed_while_recording_or_playing(monkeypatch):
+    import types
+
+    app = _app_with_sound(monkeypatch, np.zeros((800, 2), np.float32))
+    app._sync()
+    assert tracks_item(app).enabled
+    app.player = types.SimpleNamespace(position=0)
+    app._sync()
+    assert not tracks_item(app).enabled
+    app.player, app.record_at = None, 0
+    app.recorder = types.SimpleNamespace(rate=8000, stats=types.SimpleNamespace(frames_out=0),
+                                         recent=lambda n: np.zeros((0, 2), np.float32))
+    app._sync()
+    assert not tracks_item(app).enabled
+    app.recorder = None
+    app.doc.close()
+
+
+def test_the_save_tracks_cascade_works_through_the_real_menus(monkeypatch):
+    app = _app_with_sound(monkeypatch, np.zeros((800, 2), np.float32))
+    app._sync()
+    t = Tracker(app.menus)
+    t.alt_key("f")
+    assert t.key("t", "t") == (True, None) and t.submenu is tracks_item(app).submenu
+    assert t.key("2", "2") == (True, "track-2")
+    app.doc.close()
+
+
+def _save_dialog(monkeypatch, *names):
+    """The file dialog, answered with `names` in turn; returns what it was asked."""
+    from soundrec.ui import app as app_module
+
+    asked, answers = [], list(names)
+
+    def dialog(**options):
+        asked.append(options)
+        return str(answers.pop(0))
+
+    monkeypatch.setattr(app_module.filedialog, "asksaveasfilename", dialog)
+    return asked
+
+
+def test_a_saved_track_holds_exactly_that_channel(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    a = np.random.default_rng(0).uniform(-0.5, 0.5, (800, 4)).astype(np.float32)
+    app = _app_with_sound(monkeypatch, a)
+    out = tmp_path / "track.wav"
+    _save_dialog(monkeypatch, out)
+    app.doc.spec = None
+    from soundrec.output import OutputSpec
+
+    app._track_spec = lambda name: OutputSpec("WAV", "FLOAT")
+    app.command("track-3")
+    data, rate = sf.read(str(out), dtype="float32", always_2d=True)
+    assert rate == 8000 and data.shape == (800, 1)
+    assert np.array_equal(data[:, 0], a[:, 2])
+    app.doc.close()
+
+
+def test_saving_a_track_leaves_the_sound_alone(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    from soundrec.ui.document import Document
+
+    pcm = (np.random.default_rng(1).integers(-32768, 32767, (800, 4)) / 32768).astype(np.float32)
+    source = tmp_path / "song.flac"
+    sf.write(str(source), pcm, 44100, subtype="PCM_24")
+    app = _app_with_sound(monkeypatch, np.zeros((10, 2), np.float32))
+    app.doc.close()
+    app.doc = Document.open(source)
+    app.doc.dirty = True  # an edit not saved yet
+    before = (app.doc.take, app.doc.path, app.doc.spec, app.doc.dirty)
+    asked = _save_dialog(monkeypatch, tmp_path / "song-2.flac")
+    app.save_track(1)
+    assert (app.doc.take, app.doc.path, app.doc.spec, app.doc.dirty) == before
+    assert np.array_equal(app.doc.read(0, 800), pcm)
+    with sf.SoundFile(str(tmp_path / "song-2.flac")) as f:  # the sound's own format and rate
+        assert (f.format, f.subtype, f.samplerate, f.channels) == ("FLAC", "PCM_24", 44100, 1)
+        assert np.array_equal(f.read(dtype="float32"), pcm[:, 1])
+    assert asked[0]["initialfile"] == "song-2.flac" and asked[0]["defaultextension"] == ".flac"
+    assert asked[0]["filetypes"][0][1] == "*.flac" and asked[0]["confirmoverwrite"]
+    assert not list(tmp_path.glob("*.saving"))
+    app.doc.close()
+
+
+def test_a_new_recordings_track_defaults_to_a_wave_named_untitled(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    app = _app_with_sound(monkeypatch, np.zeros((800, 2), np.float32))
+    asked = _save_dialog(monkeypatch, tmp_path / "left.flac")
+    app.save_track(0)
+    assert asked[0]["initialfile"] == "untitled-1.wav"
+    assert sf.info(str(tmp_path / "left.flac")).format == "FLAC"  # the name decides
+    app.doc.close()
+
+
+def test_cancelling_the_dialog_writes_nothing(monkeypatch, tmp_path):
+    app = _app_with_sound(monkeypatch, np.zeros((800, 2), np.float32))
+    _save_dialog(monkeypatch, "")
+    app.save_track(0)
+    assert not app.said and not list(tmp_path.glob("*.wav"))
+    app.doc.close()
+
+
+def test_a_track_cant_replace_the_sounds_own_file(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    from soundrec.ui.document import Document
+
+    source = tmp_path / "song.wav"
+    sf.write(str(source), np.zeros((800, 4), np.float32), 8000, "FLOAT")
+    app = _app_with_sound(monkeypatch, np.zeros((10, 2), np.float32))
+    app.doc.close()
+    app.doc = Document.open(source)
+    _save_dialog(monkeypatch, str(source).upper())
+    app.save_track(0)
+    assert "the file this sound belongs to" in app.said[0]
+    assert sf.info(str(source)).channels == 4
+    app.doc.close()
+
+
+def test_all_tracks_writes_name_1_name_2_from_one_dialog(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    a = np.random.default_rng(2).uniform(-0.5, 0.5, (800, 3)).astype(np.float32)
+    app = _app_with_sound(monkeypatch, a)
+    asked = _save_dialog(monkeypatch, tmp_path / "band.flac")
+    app.command("tracks-all")
+    assert len(asked) == 1 and asked[0]["initialfile"] == "untitled.wav"
+    assert not asked[0]["confirmoverwrite"]  # the names it writes aren't the one it would warn of
+    for n in range(3):
+        data, rate = sf.read(str(tmp_path / f"band-{n + 1}.flac"), dtype="float32")
+        assert rate == 8000 and data.ndim == 1
+        assert np.abs(data - a[:, n]).max() < 2 / 32768  # 16-bit FLAC, dithered
+    assert not (tmp_path / "band.flac").exists() and not app.doc.dirty
+    app.doc.close()
+
+
+def test_all_tracks_asks_before_replacing(monkeypatch, tmp_path):
+    a = np.zeros((800, 2), np.float32)
+    app = _app_with_sound(monkeypatch, a)
+    (tmp_path / "band-2.wav").write_bytes(b"precious")
+    _save_dialog(monkeypatch, tmp_path / "band.wav", tmp_path / "band.wav")
+    app.answers = ["no"]
+    app.cmd_tracks_all()
+    assert (tmp_path / "band-2.wav").read_bytes() == b"precious"
+    assert not (tmp_path / "band-1.wav").exists()
+    app.answers = ["yes"]
+    app.cmd_tracks_all()
+    assert (tmp_path / "band-1.wav").stat().st_size > 44
+    assert (tmp_path / "band-2.wav").read_bytes() != b"precious"
+    app.doc.close()
+
+
+def test_a_failed_all_tracks_writes_nothing_and_says_so(monkeypatch, tmp_path):
+    a = np.zeros((800, 2), np.float32)
+    app = _app_with_sound(monkeypatch, a, rate=96000)
+    (tmp_path / "band-1.mp3").write_bytes(b"precious")
+    _save_dialog(monkeypatch, tmp_path / "band.mp3")
+    app.answers = ["yes"]
+    app.cmd_tracks_all()  # MP3 stops at 48 kHz
+    assert "Can't save" in app.said[0]
+    assert (tmp_path / "band-1.mp3").read_bytes() == b"precious"
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == ["band-1.mp3"]
+    app.doc.close()
+
+
+def test_the_pointer_finds_the_cascade_before_the_popup_under_it():
+    import types
+
+    from soundrec.ui.app import App
+
+    menus_ = cascading()
+    app = App.__new__(App)
+    app.tracker = Tracker(menus_)
+    app.tracker.alt_key("f")
+    app.tracker.key("Down"), app.tracker.key("Right")
+    _, _, tops = layout(app.tracker.submenu)
+    hit = lambda on: types.SimpleNamespace(visible=True, contains=lambda x, y: on,
+                                           local=lambda x, y: (5, tops[0] + 1))
+    app.cascade, app.popup = hit(True), hit(True)
+    assert app._where(0, 0) == ("subitem", 0)
+    app.cascade = hit(False)
+    assert app._where(0, 0) == ("item", 0)
 
 
 def test_edit_and_effects_are_greyed_without_a_sound(monkeypatch):
