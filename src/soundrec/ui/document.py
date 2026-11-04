@@ -17,6 +17,7 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from ..ffmpeg import readable
 from ..output import OutputSpec, replacing, spec_for
 from ..takes import Take
 
@@ -60,9 +61,9 @@ class Document:
     @classmethod
     def open(cls, path) -> Document:
         """Read a file into a new working copy. Anything libsndfile reads:
-        WAV, FLAC, MP3, Ogg, AIFF..."""
+        WAV, FLAC, MP3, Ogg, AIFF... and anything else ffmpeg can."""
         path = Path(path)
-        with sf.SoundFile(str(path)) as f:
+        with readable(path) as source, sf.SoundFile(str(source)) as f:
             take = Take.create(f.samplerate, f.channels, source=str(path))
             try:
                 for block in f.blocks(READ_BLOCK, dtype="float32", always_2d=True):
@@ -71,11 +72,17 @@ class Document:
             except BaseException:
                 take.discard()
                 raise
-            spec = OutputSpec(f.format, f.subtype)
+            spec = None if source != path else OutputSpec(f.format, f.subtype)
         doc = cls()
         doc.take, doc.path = take, path
-        # Save writes the file's own format back, if libsndfile can write it.
-        doc.spec = spec if sf.check_format(spec.format, spec.subtype) else spec_for(path)
+        # Save writes the file's own format back, if anything here can write
+        # it. If not, Save asks where, as for a new sound.
+        if spec is None or not sf.check_format(spec.format, spec.subtype):
+            try:
+                spec = spec_for(path)
+            except ValueError:
+                spec = None
+        doc.spec = spec
         return doc
 
     def save(self, path, spec: OutputSpec) -> None:

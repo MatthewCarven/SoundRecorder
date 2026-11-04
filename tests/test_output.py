@@ -3,7 +3,9 @@ import pytest
 import soundfile as sf
 
 from signals import fit, peak_frequency, rms_db, sine
-from soundrec.output import OutputSpec, Quantiser, Writer, preflight, spec_for
+from soundrec.output import (OutputSpec, Quantiser, Writer, channels_for, default_quality, extension,
+                             format_names, mp3_level, preflight, qualities, rate_for, spec_for,
+                             subtype_names)
 
 
 # -- what a file name asks for -------------------------------------------------
@@ -168,3 +170,153 @@ def test_replacing_leaves_things_as_they_were_on_a_failure(tmp_path):
             raise OSError("disk full")
     assert a.read_text() == "old" and not b.exists()
     assert [p.name for p in tmp_path.iterdir()] == ["a.txt"]
+
+
+# -- quality ---------------------------------------------------------------------------
+
+def _size(tmp_path, spec, rate=44100, channels=2, name="q"):
+    path = tmp_path / (name + ".out")
+    with Writer(path, spec, rate, channels) as w:
+        tone = sine(440, rate, 2.0, 0.2, channels=channels)
+        noise = 0.05 * np.random.default_rng(0).standard_normal(tone.shape)
+        w.write((tone + noise).astype(np.float32))
+    return path.stat().st_size
+
+
+def test_mp3_constant_rates_are_what_they_say(tmp_path):
+    for label, top in (("Constant 320 kbit/s", 345), ("Constant 192 kbit/s", 210),
+                       ("Constant 128 kbit/s", 140), ("Constant 64 kbit/s", 72)):
+        quality = next(q for q in qualities(OutputSpec("MP3", "MPEG_LAYER_III")) if q.label == label)
+        kbps = _size(tmp_path, OutputSpec("MP3", "MPEG_LAYER_III", quality)) * 8 / 2 / 1000
+        wanted = int(label.split()[1])
+        assert wanted * 0.95 < kbps < top, label
+
+
+def test_mp3_constant_rates_hold_at_low_sample_rates(tmp_path):
+    quality = next(q for q in qualities(OutputSpec("MP3", "MPEG_LAYER_III"))
+                   if q.label == "Constant 64 kbit/s")
+    kbps = _size(tmp_path, OutputSpec("MP3", "MPEG_LAYER_III", quality), 22050, 1) * 8 / 2 / 1000
+    assert 55 < kbps < 75
+    assert mp3_level(320, 8000) == 0.0  # past the top of that MPEG version's range: the top
+
+
+def test_every_quality_of_every_codec_writes_and_more_means_more(tmp_path):
+    for fmt, subtype, rate in (("MP3", "MPEG_LAYER_III", 44100), ("OGG", "VORBIS", 44100),
+                               ("OGG", "OPUS", 48000), ("M4A", "AAC", 44100),
+                               ("FLAC", "PCM_16", 44100)):
+        sizes = {}
+        for quality in qualities(OutputSpec(fmt, subtype)):
+            sizes[quality.label] = _size(tmp_path, OutputSpec(fmt, subtype, quality), rate)
+        first, last = list(sizes.values())[0], list(sizes.values())[-1]
+        assert all(size > 0 for size in sizes.values()), subtype
+        assert first > last, (subtype, sizes)  # each list runs from the most data to the least
+
+
+def test_the_default_line_is_in_the_list():
+    for spec in (OutputSpec("MP3", "MPEG_LAYER_III"), OutputSpec("OGG", "VORBIS"),
+                 OutputSpec("OGG", "OPUS"), OutputSpec("M4A", "AAC"), OutputSpec("FLAC", "PCM_24")):
+        assert default_quality(spec) in qualities(spec)
+    assert default_quality(OutputSpec("WAV", "PCM_16")) is None
+    assert qualities(OutputSpec("WAV", "PCM_16")) == ()
+
+
+def test_a_quality_shows_in_the_description():
+    spec = OutputSpec("M4A", "AAC", default_quality(OutputSpec("M4A", "AAC")))
+    assert spec.describe() == "M4A AAC, 192 kbit/s"
+
+
+def test_a_spec_without_a_quality_still_equals_itself():
+    assert OutputSpec("WAV", "PCM_16") == OutputSpec("WAV", "PCM_16", None)
+
+
+# -- what each format can hold ----------------------------------------------------------
+
+def test_the_lists_hold_only_what_really_writes():
+    assert list(subtype_names("MP3")) == ["MPEG_LAYER_III"]  # libsndfile lists I and II too
+    assert "MPEG_LAYER_III" not in subtype_names("WAV")
+    assert "DWVW_12" not in subtype_names("AIFF")
+    assert {"VORBIS", "OPUS"} <= set(subtype_names("OGG"))
+    assert subtype_names("M4A") == {"AAC": "AAC"}
+    assert "M4A" in format_names() and "WAV" in format_names()
+
+
+def test_rates_a_codec_cant_hold_go_up_to_one_it_can():
+    opus, mp3 = OutputSpec("OGG", "OPUS"), OutputSpec("MP3", "MPEG_LAYER_III")
+    assert rate_for(opus, 44100) == 48000 and rate_for(opus, 48000) == 48000
+    assert rate_for(opus, 96000) == 48000 and rate_for(opus, 22050) == 24000
+    assert rate_for(mp3, 96000) == 48000 and rate_for(mp3, 44100) == 44100
+    assert rate_for(OutputSpec("WAV", "PCM_16"), 192000) == 192000
+
+
+def test_channels_a_format_cant_hold_come_down():
+    assert channels_for(OutputSpec("MP3", "MPEG_LAYER_III"), 4) == 2
+    assert channels_for(OutputSpec("MP3", "MPEG_LAYER_III"), 1) == 1
+    assert channels_for(OutputSpec("WAV", "PCM_16"), 32) == 32
+
+
+def test_extensions_round_trip_through_spec_for():
+    for fmt in format_names():
+        for subtype in subtype_names(fmt):
+            spec = OutputSpec(fmt, subtype)
+            if fmt in ("WAVEX",):
+                assert extension(spec) == ".wav"
+            else:
+                assert spec_for("x" + extension(spec)).format == fmt, spec
+
+
+# -- AAC through ffmpeg ------------------------------------------------------------------
+
+def test_m4a_comes_from_its_extension():
+    assert spec_for("x.m4a") == OutputSpec("M4A", "AAC")
+    with pytest.raises(ValueError):
+        spec_for("x.m4a", bits="16")
+
+
+def test_aac_round_trip_keeps_length_pitch_and_level(tmp_path):
+    from soundrec.ffmpeg import readable
+
+    rate, seconds = 44100, 2.0
+    data = sine(997, rate, seconds, 0.25, channels=2)
+    path = tmp_path / "a.m4a"
+    with Writer(path, OutputSpec("M4A", "AAC"), rate, 2) as w:
+        for at in range(0, len(data), 10_000):
+            w.write(data[at:at + 10_000])
+    with readable(path) as source:
+        assert source != path
+        back, back_rate = sf.read(str(source), dtype="float32", always_2d=True)
+    assert back_rate == rate and back.shape[1] == 2
+    assert abs(len(back) - len(data)) <= 2048
+    middle = back[10_000:-10_000, 0]
+    assert abs(peak_frequency(middle, rate) - 997) < 2
+    assert abs(rms_db(middle) - rms_db(data[:, 0])) < 0.3
+
+
+def test_aac_holds_four_channels(tmp_path):
+    from soundrec.ffmpeg import readable
+
+    data = np.zeros((44100, 4), np.float32)
+    path = tmp_path / "q.m4a"
+    with Writer(path, OutputSpec("M4A", "AAC"), 44100, 4) as w:
+        w.write(data)
+    with readable(path) as source:
+        assert sf.info(str(source)).channels == 4
+
+
+def test_a_broken_encoder_says_so(tmp_path):
+    with pytest.raises(RuntimeError):
+        with Writer(tmp_path / "no" / "such" / "folder.m4a", OutputSpec("M4A", "AAC"), 44100, 2) as w:
+            w.write(np.zeros((1000, 2), np.float32))
+
+
+def test_preflight_checks_aac_too():
+    preflight(OutputSpec("M4A", "AAC"), 44100, 2)
+
+
+def test_what_neither_can_read_says_so(tmp_path):
+    from soundrec.ffmpeg import readable
+
+    path = tmp_path / "not-sound.bin"
+    path.write_bytes(b"nothing here")
+    with pytest.raises(Exception):
+        with readable(path):
+            pass

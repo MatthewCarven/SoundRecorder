@@ -21,6 +21,7 @@ import numpy as np
 import soundfile as sf
 
 from .convert import Resampler, fit_channels
+from .ffmpeg import readable
 from .takes import Take
 
 BLOCK = 1 << 16
@@ -51,7 +52,7 @@ def _range(take: Take, start: int, stop: int):
 
 def file_blocks(path, rate: int, channels: int):
     """A sound file's blocks at the sound's rate and channels."""
-    with sf.SoundFile(str(path)) as f:
+    with readable(path) as source, sf.SoundFile(str(source)) as f:
         resampler = Resampler(f.samplerate, rate, channels)
         for block in f.blocks(BLOCK, dtype="float32", always_2d=True):
             yield resampler.process(fit_channels(block, channels))

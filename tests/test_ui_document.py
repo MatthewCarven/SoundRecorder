@@ -267,3 +267,35 @@ def test_a_message_box_lays_out_and_answers_keys():
     box.key("Tab", "")
     assert box.key("Return", "") and box.answer == "no"
     assert all(system_font().measure(line) <= 320 for line in wrap("word " * 100, system_font()))
+
+
+# -- files only ffmpeg reads ---------------------------------------------------------------
+
+def test_an_m4a_opens_and_saves_back_as_aac(tmp_path):
+    from soundrec.output import Writer
+
+    path = tmp_path / "a.m4a"
+    with Writer(path, OutputSpec("M4A", "AAC"), 44100, 2) as w:
+        w.write(noise(44100) * 0.2)
+    doc = Document.open(path)
+    assert (doc.rate, doc.channels, doc.spec) == (44100, 2, OutputSpec("M4A", "AAC"))
+    assert abs(doc.frames - 44100) <= 2048
+    doc.save(path, doc.spec)
+    assert path.stat().st_size > 1000 and not list(tmp_path.glob("*.saving"))
+    doc.close()
+
+
+def test_a_file_only_ffmpeg_can_write_leaves_save_to_ask(tmp_path, monkeypatch):
+    import subprocess
+
+    from soundrec import ffmpeg
+
+    source = tmp_path / "in.wav"
+    sf.write(str(source), noise(4410), 44100, "FLOAT")
+    path = tmp_path / "in.wma"
+    subprocess.run([ffmpeg.find(), "-loglevel", "error", "-y", "-i", str(source), "-c:a", "wmav2",
+                    "-f", "asf", str(path)], check=True, stdin=subprocess.DEVNULL,
+                   creationflags=ffmpeg.NO_WINDOW)
+    doc = Document.open(path)
+    assert doc.rate == 44100 and doc.spec is None and doc.path == path
+    doc.close()

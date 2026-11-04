@@ -38,10 +38,11 @@ IDLE_TICK_MS = 100
 REPEAT_DELAY_MS, REPEAT_MS = 400, 60
 GIL_SWITCH_SECONDS = 0.0005
 
-OPEN_TYPES = [("Sounds", "*.wav *.flac *.mp3 *.ogg *.oga *.opus *.aif *.aiff *.aifc *.au *.snd "
-                         "*.caf *.w64 *.rf64 *.voc"), ("All files", "*.*")]
+OPEN_TYPES = [("Sounds", "*.wav *.flac *.mp3 *.ogg *.oga *.opus *.m4a *.aac *.mp4 *.wma *.aif "
+                         "*.aiff *.aifc *.au *.snd *.caf *.w64 *.rf64 *.voc"),
+              ("All files", "*.*")]
 SAVE_TYPES = [("Wave files", "*.wav"), ("FLAC", "*.flac"), ("MP3", "*.mp3"),
-              ("Ogg Vorbis", "*.ogg"), ("Opus", "*.opus"), ("AIFF", "*.aiff"),
+              ("Ogg Vorbis", "*.ogg"), ("Opus", "*.opus"), ("AAC", "*.m4a"), ("AIFF", "*.aiff"),
               ("All files", "*.*")]
 
 
