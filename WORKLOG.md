@@ -487,3 +487,87 @@ by anyone.** To try it:
    Do it again: it should ask before replacing them.
 6. Alt+F, T, then Right, Left, Esc: check that feels like the other menus.
 7. Is the cascade where you'd expect? Its position is my guess at 3.1's.
+
+## 2026-11-04: Phase 5, formats and dialogs
+
+The back end first, in the order things depend on each other, with a commit for each.
+
+**Measured before building** (the Quality lists are labelled from these). libsndfile
+has one "compression level", which means something else to each codec:
+
+| Codec | What the level does | Found |
+|-------|---------------------|-------|
+| MP3 constant | 320 - 288 x level kbit/s at 32 kHz and up; 160 and 8 at 16-24 kHz; 64 and 8 below | level 1 **fails**. So `mp3_level` works it out per rate |
+| MP3 variable | LAME's V0 to V9 (level x 10) | |
+| Vorbis | quality = 10 x (1 - level) | default is quality 4 |
+| Opus | about 256 - 250 x level kbit/s a channel | level 1 is 7 kbit/s; default about 62 |
+| FLAC | compression 0 to 8 | default 5 |
+
+Not obvious from the library's own lists: **MPEG layers I and II are listed and don't
+write at any rate**, nor does MP3 in a WAV or AIFF's DWVW_12, so `subtype_names` lists
+what really writes, by trying it. **Opus takes only 8, 12, 16, 24 and 48 kHz, so the
+H2n's 44.1 kHz can't go straight to Opus**, and MP3 stops at 48 kHz and two channels.
+So `rate_for` and `channels_for` give the nearest a codec can hold, rather than an
+error from the encoder.
+
+**AAC.** `ffmpeg.py`: raw float into ffmpeg's stdin behind the same `Writer`, so
+Save, tracks, `recover` and `rec --live` all got it at once. `-f ipod`, because the
+temporary file's name is `.saving`. Any rate, 1 to 8 channels; 256 and 320 kbit/s
+came in near 226 on a test tone, limited by what's in it. A round trip keeps pitch
+and level and is within 2048 frames of the length. stderr goes to a temporary file,
+since a pipe could fill up and stall ffmpeg; no console window under pythonw. imageio-ffmpeg's
+binary is ffmpeg 9.0.2, **100 MB**: Phase 6 will notice.
+
+**Reading** goes through a temporary float WAV, so libsndfile says how many channels
+at what rate, and nothing has to pick that out of ffmpeg's messages. Open, Insert and
+Mix all take .m4a, .wma, .mp4...
+
+**Save As.** Rate and channels had to live somewhere: Windows' own Save dialog can't
+take a Convert button, so they're in Output Format, as a `Target`, with "As the sound"
+as the default. A Save As that converts changes the sound in the window to match,
+as 95's Convert Now did, so the window and its file keep agreeing. It asks first
+(a recording that was never saved can't come back), the new take goes in only once
+the file is safe, and a failure leaves things as they were. Tracks are copies, so
+they convert without asking and say so afterwards. **That's my call and can go the
+other way** (TODO).
+
+**The dialogs.** `ui/dialog.py`'s MessageBox became a `Dialog` base with focus, push
+buttons and input, with a `ListBox` in `ui/controls.py`, the only new control both
+dialogs need. All pure logic and pixels but `Dialog.run`, so the dialogs are driven
+in tests as the Tracker is. Lists depend on each other (format fills encodings fills
+qualities and rates), a rate the new codec also takes stays chosen, and the summary
+line says when Save As would change this sound. A list box takes Tab, Alt+mnemonic,
+the arrows, Home/End, PgUp/PgDn, a letter, the wheel, a double-click for OK, and its
+scrollbar with a held arrow repeating.
+
+Recording Device asks nothing of a device until Probe is pressed; what it shows
+comes from the scan. Probe warns first on anything of ZOOM's, runs on the scan
+thread (PortAudio's), and the answers are kept for next time. WASAPI exclusive isn't
+offered anywhere. Unplugged jacks show greyed. OK takes the latest scan's copy of
+the device, because a rescan renumbers devices and a stale index won't open.
+
+**What the real windows caught:** in Save Tracks, the popups still showing behind
+the file dialog (WORKLOG above). In the dialogs, `str.capitalize` lowercasing
+"Windows" and "Hz" in the details, which the pixels and a test showed.
+
+355 tests. Real windows, invisible, with a fake device table: 21 checks on both
+dialogs including the H2n warning on top of the dialog and the outer one getting the
+mouse back, and 30 on Save Tracks. `-confirmoverwrite` confirmed by Tk's own option
+parser. Pushing hit a GitHub 500 once; the next push carried it.
+
+**Not tried:** by Matthew, any of it. By anyone: the native Save dialog with these
+options, and Probe against real hardware from the window (it ran against a stand-in;
+the probe itself is Phase 1's `--probe`). To try it:
+
+1. Launch. Device > Recording Device: do the lists look right, and does choosing a
+   device feel safe? Pick WASAPI, Microphone (H2n), OK, and record a few seconds.
+2. There, pick a Realtek device and press Probe. Then the H2n only if you want to: it
+   warns first, and you may need to replug it after.
+3. Device > Output Format: pick MP3. Are the lists and the summary line clear? Try
+   Tab, the arrows, the scrollbar, the wheel. Cancel leaves everything alone.
+4. With the 4-channel take open: Output Format, FLAC, 22,050 Hz, Stereo, OK. File >
+   Save As: it should say what the file will be and ask. Then check it sounds right,
+   and that the window's length is unchanged.
+5. Save As to `test.m4a`, then File > Open it: does it sound right?
+6. Save As to `test.opus` from a 44.1 kHz sound: it should offer 48,000 Hz.
+7. Does the look pass? Both dialogs are my reading of 3.1's File Open.

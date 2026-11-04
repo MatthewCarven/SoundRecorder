@@ -4,8 +4,9 @@ A sound recorder for Windows that will look and behave like the Windows 3.1 one,
 over every Windows audio API, in every format. [PLAN.md](PLAN.md) has the design
 and the phases. Done so far: Phase 1 (finding devices and what they really do),
 Phase 2 (the recording engine, driven from the command line), Phase 3 (the
-window: recording, playback, File, the menus) and Phase 4 (Edit and Effects,
-and a Channels choice). Next: the Recording Device and Output Format dialogs.
+window: recording, playback, File, the menus), Phase 4 (Edit and Effects, and a
+Channels choice) and Phase 5 (the Recording Device and Output Format dialogs,
+AAC, and Save As at another rate or channel layout). Next: packaging it as an exe.
 
 ## Set up
 
@@ -27,8 +28,8 @@ The Windows 3.1 Sound Recorder, drawn pixel for pixel (its layout was measured
 from a 3.1 screenshot, and it matches it exactly) in the fonts Windows still
 ships: the System font and MS Sans Serif, read straight from their `.fon` files.
 Every pixel is doubled by default at 100% display scaling (3x at 150%, 4x at
-200%); `--zoom 1` shows 3.1's own 317 x 169. It records from Windows' default recording device over WASAPI shared mode,
-or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
+200%); `--zoom 1` shows 3.1's own 317 x 169. It records from Windows' default recording device over WASAPI shared mode
+until Device > Recording Device picks another, or from `--device` / `--api` (the same as `rec`'s).
 
 - **The buttons**: rewind, forward, play, stop, record. Recording starts at the
   position and records over what follows, as in 3.1; the wave box shows what's
@@ -37,14 +38,18 @@ or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
   the wave box, left along the top and right along the bottom, from -60 dBFS at
   the left edge to 0 at the right: green, yellow from -12, red from -3, with a
   peak-hold tick. Stopped, the box is 3.1's own.
-- **File**: New, Open (anything libsndfile reads), Save, Save As (the extension
-  picks the format: WAV, FLAC, MP3, Ogg, Opus, AIFF...), Revert, Exit.
+- **File**: New, Open (anything libsndfile reads, and anything else ffmpeg can),
+  Save, Save As (the extension picks the format: WAV, FLAC, MP3, Ogg, Opus, AAC
+  as .m4a, AIFF...), Revert, Exit. If the format can't hold the sound, or Output
+  Format asks for another rate or channels, Save As says so first, and the sound
+  in the window changes to match the file, as Windows 95's Convert Now did.
 - **File > Save Tracks** (ours; a sound of two or more channels): Track 1 to Track
   N each save that one channel as a mono file, and All Tracks saves them all from
   one dialog, as name-1, name-2... They keep the sound's own format and rate if
-  the extension stays the same, and another extension picks another format. They
-  save copies: the sound, its file and its changed-or-not state stay as they
-  were. All Tracks asks before replacing any file, and writes all of them or none.
+  the extension stays the same, and another extension picks another format (at
+  the nearest rate it can hold, and it says so). They save copies: the sound, its
+  file and its changed-or-not state stay as they were. All Tracks asks before
+  replacing any file, and writes all of them or none.
 - **Edit**: Insert File and Mix with File at the position (the file is converted
   to the sound's rate and channels; into an empty window it becomes the sound),
   Delete Before / After Current Position (they ask first: only Revert brings it
@@ -54,6 +59,17 @@ or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
   format that can't go past full scale), Increase Speed by 100% and Decrease
   Speed (pitch too, as in 3.1; resampled, so no aliasing), Add Echo (one repeat,
   0.25 s later at half the level), Reverse. Undo is 3.1's: Revert.
+- **Device > Recording Device**: every API and device, greyed for jacks with
+  nothing plugged in. Choosing one asks it nothing: what's shown comes from the scan.
+  **Probe** asks the device for its native formats (and an ASIO driver for its
+  channels' names), and warns first on the H2n, which a question can knock to the
+  wrong rate. It says what's known to go wrong (the H2n's ASIO driver, the Realtek's
+  PC Speaker pins). WASAPI exclusive mode isn't offered: see Known trouble.
+- **Device > Output Format**: what Save As writes. Format (every one libsndfile
+  has, and AAC), encoding (those that really write), quality per codec (MP3
+  constant or variable, Vorbis, Opus and AAC rates, FLAC level), rate and channels.
+  "From the file's name" and "As the sound" leave those to the name and the sound.
+  A file name with another extension still wins. New sounds record at the chosen rate.
 - **Device > Mono / Stereo / All N Channels**: what a new sound records. Until you
   pick, a mono device records mono and anything else stereo; Mono mixes channels 1
   and 2. Once there's a sound, recordings take its channels. Playing a sound with
@@ -62,7 +78,7 @@ or from `--device` / `--api` (the same as `rec`'s), until Phase 5's dialog.
 - **Device > Refresh Devices** looks again and says what it found; plugging a
   device in looks again too, quietly.
 - If something goes wrong inside the window, it says so, and the details go to
-  `%LOCALAPPDATA%\SoundRecorder\errors.log`. The Device dialogs come in Phase 5.
+  `%LOCALAPPDATA%\SoundRecorder\errors.log`.
 - The caption drags the window; the minimize arrow, the taskbar button and
   Alt+Tab work as for any window. The control-menu box opens 3.1's control menu
   (double-click closes). Menus work with the mouse (press and drag, or click) and
@@ -97,8 +113,9 @@ sound-recorder rec --device zoom --api ASIO --pick 2 --channels 1 --bits 24 voic
 sound-recorder rec --api Loopback --live what-i-hear.mp3
 ```
 
-- The file's extension picks the format: `.wav .flac .mp3 .ogg` (Vorbis) `.opus
-  .aiff .caf .w64 .rf64` and everything else libsndfile writes. `--bits 8|16|24|32|float`
+- The file's extension picks the format: `.wav .flac .mp3 .ogg` (Vorbis) `.opus .m4a`
+  (AAC, through ffmpeg) `.aiff .caf .w64 .rf64` and everything else libsndfile
+  writes. `--bits 8|16|24|32|float`
   sets the depth; 8 and 16 bits get TPDF dither.
 - `--device` is part of a name; `--api` picks the API when several have the device
   (otherwise the most direct one wins). No `--device` records from the default.
@@ -167,7 +184,11 @@ Each API tells a different story about the same hardware:
   earlier blocks (seen on the Realtek mic array and Stereo Mix, at every block
   size and latency tried, 2026-11-03; the H2n not tried). `rec --exclusive` stops
   such a take after about 2 s, when the clock check sees it. Record in shared mode
-  or over ASIO instead. The probe's exclusive-mode answers are unaffected.
+  or over ASIO instead; the window doesn't offer it. The probe's exclusive-mode
+  answers are unaffected.
+- **Codecs have limits.** MP3 stops at 48 kHz and two channels, and libsndfile
+  writes only layer III of it, though it lists I and II. Opus takes only 8, 12, 16,
+  24 and 48 kHz, so a 44.1 kHz take goes up to 48 kHz. FLAC stops at 8 channels.
 - A `--probe` run usually takes 2-5 s (about 1 s of it starting PortAudio), but
   two runs once took 38 s between them while the laptop was busy. The cause
   wasn't pinned down.

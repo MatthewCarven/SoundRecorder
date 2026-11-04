@@ -40,12 +40,12 @@ See PLAN.md for the why.
 - [ ] Unplugging the H2n marked its render endpoint not present at once, but its capture endpoint only 100 s later (21:46:46 / 21:48:26). The rescan saw the device gone straight away, but a capture-only USB mic might be noticed late. Try an `IMMNotificationClient` if it matters
 - [x] Scan on a background thread in the window. A run usually takes 2-5 s (PortAudio itself ~1 s), but two runs once took 38 s while the laptop was busy, cause unknown. Done in Phase 3 (`ui/audio.py`: one thread for every scan, so PortAudio starts and stops on the same one); the window's first scan took 0.5 s
 - [ ] "ZOOM H and F Series Async ASIO" won't load (CoCreateInstance: E_OUTOFMEMORY); PortAudio skips it too. Probably only works with the device in another mode
-- [ ] WDM-KS lists the Realtek's "PC Speaker" reference pins as inputs (48-192 kHz). They're real, but confusing in a device list: label or hide them in the dialog
+- [x] WDM-KS lists the Realtek's "PC Speaker" reference pins as inputs (48-192 kHz). They're real, but confusing in a device list: the Recording Device dialog says what they are
 
 ## Surfaced in Phase 2
-- [ ] **WASAPI exclusive capture is broken in sounddevice's PortAudio (19.7.0-devel)**: it re-delivers stale buffers, 40-60% more frames than the device makes, many exact repeats (Realtek mic array and Stereo Mix, every block size and latency tried). `rec` stops such a take after ~2 s. Options: a newer PortAudio build, or our own WASAPI exclusive capture (ctypes, like asio.py). Until then Phase 5's dialog shouldn't offer exclusive recording
+- [ ] **WASAPI exclusive capture is broken in sounddevice's PortAudio (19.7.0-devel)**: it re-delivers stale buffers, 40-60% more frames than the device makes, many exact repeats (Realtek mic array and Stereo Mix, every block size and latency tried). `rec` stops such a take after ~2 s. Options: a newer PortAudio build, or our own WASAPI exclusive capture (ctypes, like asio.py). The Recording Device dialog doesn't offer exclusive recording
 - [x] **H2n deep-voices bug: cause found** (2026-11-03, `scripts/h2n_clock.py --play 48000`): capture alone 44,098 frames/s; with silence playing to its playback endpoint at 48 kHz, 48,000 frames/s, and still 48,000 after the playback stopped. One clock for both directions, and Windows has the two endpoints at different rates. Cure: same rate on both (Matthew, below)
-- [ ] **The H2n's ASIO driver delivers 21,381 frames/s**: one 64-frame buffer every 3.00 ms, at 44.1 and 48 kHz, with any block size, even from a bare callback. Over half the audio is lost. Its only buffer size is 64. Look for a buffer setting in the driver's own control panel (IASIO::controlPanel, vtable slot 21, could open it from asio.py); otherwise the Phase 5 dialog should warn against ASIO for it
+- [ ] **The H2n's ASIO driver delivers 21,381 frames/s**: one 64-frame buffer every 3.00 ms, at 44.1 and 48 kHz, with any block size, even from a bare callback. Over half the audio is lost. Its only buffer size is 64. Look for a buffer setting in the driver's own control panel (IASIO::controlPanel, vtable slot 21, could open it from asio.py). The Recording Device dialog warns against ASIO for it
 - [ ] Ten-minute take from the H2n: blocked over ASIO (above) and WASAPI exclusive (the PortAudio bug). Over WASAPI shared it's the same path as the Stereo Mix take, which passed
 - [ ] Phase 3: with the H2n's 64-frame ASIO buffer the callback wants the GIL every 1.3 ms; check for overflows with the window drawing (the CLI's main thread just sleeps). **Half done**: a stand-in thread waking every 1.3 ms was up to 2.6 ms late while the window painted at 25 fps (32 times over 1.3 ms in 5 s); with Python's switch interval at 0.5 ms (the window sets it), 1.5 ms at worst. The real test needs the H2n back in stereo mode (4-channel mode has no ASIO), and its ASIO driver loses half the audio anyway, so the clock check stops such a take after 2 s
 - [x] H2n in 4-channel surround mode: Windows' own USB driver, "Microphone (H2n)" 4 ch 24-bit, no ASIO. Its endpoints came up at 44.1/48 kHz, so Matthew set "Headphones (H2n)" to 44.1 kHz 24-bit too (2026-11-03); the clock then held with playback running
@@ -79,7 +79,7 @@ See PLAN.md for the why.
 - [x] **Matthew**: try Record and Refresh Devices again: working fine (2026-11-03)
 - [x] File > Exit did nothing (Matthew). His window was found with its hidden menu popup as the active window; how it got there wasn't reproduced. Now the popup is truly hidden between menus, handed back at once if it's ever activated (so an open menu isn't closed under the click), keys reaching it go to the main window, and a message box gives the focus back when it closes
 - [x] **Matthew**: File > Exit again: works (2026-11-03)
-- Recording Device... and Output Format... are greyed on purpose: they're Phase 5's dialogs (Matthew asked; offered to bring them forward, and he's keeping them for Phase 5)
+- Recording Device... and Output Format... were greyed on purpose until Phase 5's dialogs (Matthew asked; built 2026-11-04)
 
 ## Surfaced in Phase 3
 - [ ] Open and Save As use Windows 11's own file dialogs. A 3.1-style one (File Name list, Directories, Drives) would fit Phase 5's dialogs, if wanted
@@ -120,11 +120,21 @@ See PLAN.md for the why.
 - [ ] A cascade taller than the screen (about 55 tracks at 2x) would run off the bottom; All Tracks is still there
 
 ## Phase 5: formats and dialogs
-- [ ] Recording Device dialog (API, device, native formats, channel names); probe on demand only
-- [ ] Output Format dialog (every `soundfile` format and subtype, quality per codec)
-- [ ] AAC (.m4a) through ffmpeg (`imageio-ffmpeg`)
-- [ ] Save As with a different rate or channel layout
+- [x] Recording Device dialog (API, device, native formats, channel names); probe on demand only, warning first on the H2n. Greyed endpoints; no exclusive mode; a warning on the H2n's ASIO driver
+- [x] Output Format dialog (every `soundfile` format, every encoding that really writes, quality per codec, rate, channels)
+- [x] AAC (.m4a) through ffmpeg (`imageio-ffmpeg`): writing, and reading anything else ffmpeg can (Open, Insert, Mix)
+- [x] Save As with a different rate or channel layout; a format's limits (Opus has no 44.1 kHz, MP3 stops at 48 kHz and two channels) go to the nearest it can hold
+- [x] Tests (355), and real windows (invisible, a fake device table): 21 checks on both dialogs, including the H2n warning box on top of the dialog
+- [ ] **Matthew**: try both dialogs and a converted Save As in the real window (steps in WORKLOG, 2026-11-04)
+- [ ] **Matthew's say-so first**: Probe has never run from the window on real hardware, only against a stand-in. `--probe` is the same code, tested in Phase 1. Try it on the Realtek before the H2n
+- [ ] Should a Save As that converts leave the sound in the window as it was, saving a copy instead? Mine was to follow 95's Convert Now (asks first). Say if it should be the other way
+- [ ] A channel picker (record the H2n's inputs 3 and 4 only): the engine can (`pick`), the dialog only shows the names. Needs the answer to which pair is which, above
+- [ ] Mono from more than two channels through Save As uses `fit_channels` (all of them averaged), where recording Mono mixes channels 1 and 2. On an H2n 4-channel take, that averages its mid-side pair in too. Same open question as the picker
+- [ ] The Recording Device dialog could show the identical-channels warning above
+- [ ] A file only ffmpeg can read and nothing here can write (.wma) opens with no format, so Save asks where, starting from a name it can't save
+- [ ] A held key or a long list repaints the whole dialog at each step (2.3 MB of pixels at 2x). Fine here; it's what the main window does too
+- [ ] Format descriptions are libsndfile's own, English and a bit dry (OGG's says "OGG Container format")
 
 ## Phase 6: package
-- [ ] PyInstaller build with PortAudio (ASIO), libsndfile and ffmpeg bundled
+- [ ] PyInstaller build with PortAudio (ASIO), libsndfile and ffmpeg bundled. imageio-ffmpeg's binary is 100 MB, the build's biggest part by far: `imageio_ffmpeg` needs collecting as data
 - [ ] Icon, remembered settings, smoke test of the built exe

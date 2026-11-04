@@ -205,9 +205,15 @@ written mono through `Take.save_tracks`, one pass over the take however many
 tracks, and `output.replacing` puts them in place all together. Save As's rate and
 channel conversion builds on the same two.
 
-**Phase 5: formats and dialogs.** The Recording Device dialog (API, device, native
-formats, channel picker) and the Output Format dialog (container, codec, quality),
-both in 3.1 style; AAC through ffmpeg; Save As converting rate and channels.
+**Phase 5: formats and dialogs. Built 2026-11-04** (WORKLOG). The Recording Device
+dialog (API, device, native formats, channel names, probing only on request) and
+the Output Format dialog (format, encoding, quality, rate, channels), both drawn in
+3.1 style on `ui/dialog.py`'s base and `ui/controls.py`'s list box; AAC through
+imageio-ffmpeg; Save As converting rate and channels. Two choices were mine, and
+easy to change: rate and channels live in Output Format, since Windows' own Save
+dialog can't take a Convert button, and a Save As that converts changes the sound
+in the window too, as 95's Convert Now did. A channel picker wasn't built: the
+dialog shows the channels' names. Waits on Matthew's try.
 
 **Phase 6: package.** PyInstaller one-folder or one-file exe with libsndfile,
 PortAudio (ASIO build) and ffmpeg bundled, an icon, settings remembered (last device,
