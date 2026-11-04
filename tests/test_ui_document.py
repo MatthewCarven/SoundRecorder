@@ -303,37 +303,31 @@ def test_a_file_only_ffmpeg_can_write_leaves_save_to_ask(tmp_path, monkeypatch):
 
 # -- saving at another rate or channel layout -------------------------------------------------
 
-def test_saving_converted_changes_the_sound_to_match(tmp_path):
+def test_a_converted_copy_leaves_the_sound_as_it_was(tmp_path, takes_folder):
+    a = noise(4800, 4)
     doc = Document()
-    doc.splice(0, take_of(noise(4800, 4)))
-    old = doc.take
+    doc.splice(0, take_of(a))
+    before = (doc.take, doc.path, doc.spec, doc.dirty)
     path = tmp_path / "small.wav"
-    doc.save(path, OutputSpec("WAV", "FLOAT"), 24000, 2)
-    assert (doc.rate, doc.channels) == (24000, 2) and abs(doc.frames - 2400) <= 1
-    assert doc.path == path and not doc.dirty and not old.path.exists()
+    doc.save_copy(path, OutputSpec("WAV", "FLOAT"), 24000, 2)
+    assert (doc.take, doc.path, doc.spec, doc.dirty) == before
+    assert (doc.rate, doc.channels, doc.frames) == (48000, 4, 4800)
+    assert np.array_equal(doc.read(0, 4800), a)
     info = sf.info(str(path))
-    assert (info.samplerate, info.channels, info.frames) == (24000, 2, doc.frames)
+    assert (info.samplerate, info.channels) == (24000, 2) and abs(info.frames - 2400) <= 1
+    assert len(list(takes_folder.glob("*.f32"))) == 1  # the converted take has gone
     doc.close()
 
 
-def test_a_failed_converted_save_leaves_the_sound_and_no_stray_take(tmp_path, takes_folder):
+def test_a_failed_copy_leaves_no_file_and_no_stray_take(tmp_path, takes_folder):
     doc = Document()
     doc.splice(0, take_of(noise(4800, 2)))
     before = (doc.take, doc.path, doc.spec, doc.dirty)
     with pytest.raises(Exception):
-        doc.save(tmp_path / "x.mp3", OutputSpec("MP3", "MPEG_LAYER_III"), 96000, 1)  # past 48 kHz
+        doc.save_copy(tmp_path / "x.mp3", OutputSpec("MP3", "MPEG_LAYER_III"), 96000, 1)  # past 48 kHz
     assert (doc.take, doc.path, doc.spec, doc.dirty) == before
     assert doc.take.path.exists() and len(list(takes_folder.glob("*.f32"))) == 1
-    assert not list(tmp_path.glob("*.saving"))
-    doc.close()
-
-
-def test_saving_at_the_sounds_own_rate_converts_nothing(tmp_path):
-    doc = Document()
-    doc.splice(0, take_of(noise(4800, 2)))
-    take = doc.take
-    doc.save(tmp_path / "same.wav", OutputSpec("WAV", "FLOAT"), 48000, 2)
-    assert doc.take is take
+    assert not list(tmp_path.glob("x.mp3*"))
     doc.close()
 
 

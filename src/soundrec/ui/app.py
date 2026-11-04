@@ -538,14 +538,16 @@ class App:
         return box.run((r.winfo_rootx(), r.winfo_rooty(), r.winfo_width(), r.winfo_height()))
 
     def _save_changes(self) -> bool:
-        """Offer to save a changed sound. False if the user cancels."""
-        if not self.doc.dirty or self.doc.take is None:
-            return True
-        answer = self.ask(f"Do you want to save the changes to {self.doc.name}?",
-                          [("&Yes", "yes"), ("&No", "no"), ("Cancel", "cancel")])
-        if answer == "yes":
-            return self.cmd_save()
-        return answer == "no"
+        """Offer to save a changed sound. False if the user cancels. A Save As
+        that made a converted copy leaves the sound unsaved, so it asks again."""
+        while self.doc.dirty and self.doc.take is not None:
+            answer = self.ask(f"Do you want to save the changes to {self.doc.name}?",
+                              [("&Yes", "yes"), ("&No", "no"), ("Cancel", "cancel")])
+            if answer == "no":
+                return True
+            if answer != "yes" or not self.cmd_save():
+                return False
+        return True
 
     def _replace(self, doc: Document) -> None:
         self.doc.close()
@@ -609,34 +611,46 @@ class App:
         except ValueError as e:
             self.message(f"Can't save {Path(name).name}: {e}.", kind="warning")
             return False
-        doc = self.doc
+        path, doc = Path(name), self.doc
         rate = rate_for(spec, self.output.rate or doc.rate)
         channels = channels_for(spec, self.output.channels or doc.channels)
-        if (rate, channels) != (doc.rate, doc.channels) and not self._confirm_convert(
-                Path(name), rate, channels):
+        if (rate, channels) == (doc.rate, doc.channels):
+            return self._write(path, spec)
+        return self._write_copy(path, spec, rate, channels)
+
+    def _write_copy(self, path: Path, spec, rate: int, channels: int) -> bool:
+        """Save As at another rate or layout: a copy, so the sound, its file
+        and whether it's changed all stand."""
+        doc = self.doc
+        if doc.path is not None and same_file(path, doc.path):
+            self.message(f"{path.name} is the file this sound belongs to, and a converted copy "
+                         "would replace it.\n\nPick another name.", kind="warning")
             return False
-        return self._write(Path(name), spec, rate, channels)
+        question = (f"{path.name} will be a copy at {rate:,} Hz, {channels_text([channels])}.\n\n"
+                    f"The sound in this window stays as it is, at {doc.rate:,} Hz, "
+                    f"{channels_text([doc.channels])}. Go on?")
+        if self.ask(question, [("&Yes", "yes"), ("&No", "no")]) != "yes":
+            return False
+        return self._saving(path, lambda: doc.save_copy(path, spec, rate, channels))
 
-    def _confirm_convert(self, path: Path, rate: int, channels: int) -> bool:
-        return self.ask(f"{path.name} will be {rate:,} Hz, {channels_text([channels])}.\n\n"
-                        "The sound in this window changes to match, and only Revert to a saved "
-                        "file can bring the original back. Go on?",
-                        [("&Yes", "yes"), ("&No", "no")]) == "yes"
+    def _write(self, path: Path, spec) -> bool:
+        if not self._saving(path, lambda: self.doc.save(path, spec)):
+            return False
+        self._sync()
+        self.redraw()
+        return True
 
-    def _write(self, path: Path, spec, rate: int | None = None, channels: int | None = None) -> bool:
-        before = self.doc.frames
+    def _saving(self, path: Path, save) -> bool:
+        """Run a save with the watch cursor up. False, having said why, if it fails."""
         self.root.config(cursor="watch")
         self.root.update_idletasks()
         try:
-            self.doc.save(path, spec, rate, channels)
+            save()
         except Exception as e:  # the encoder's reason, or the disk's
             self.message(f"Can't save {path.name}.\n\n{e}", kind="warning")
             return False
         finally:
             self.root.config(cursor="")
-        self.position = min(same_moment(self.position, before, self.doc.frames), self.doc.frames)
-        self._sync()
-        self.redraw()
         return True
 
     def _write_tracks(self, tracks: dict, confirm: bool = False) -> bool:
@@ -660,15 +674,8 @@ class App:
             self.message(f"Can't save {first.name}: {e}.", kind="warning")
             return False
         rate = rate_for(spec, self.doc.rate)
-        self.root.config(cursor="watch")
-        self.root.update_idletasks()
-        try:
-            self.doc.save_tracks(tracks, spec, rate)
-        except Exception as e:  # the encoder's reason, or the disk's
-            self.message(f"Can't save {first.name}.\n\n{e}", kind="warning")
+        if not self._saving(first, lambda: self.doc.save_tracks(tracks, spec, rate)):
             return False
-        finally:
-            self.root.config(cursor="")
         if rate != self.doc.rate:
             self.message(f"{spec.format} can't hold {self.doc.rate:,} Hz, so it's saved at "
                          f"{rate:,} Hz. The sound here is as it was.")

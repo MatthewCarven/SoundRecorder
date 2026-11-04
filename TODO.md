@@ -127,7 +127,7 @@ See PLAN.md for the why.
 - [x] Tests (355), and real windows (invisible, a fake device table): 21 checks on both dialogs, including the H2n warning box on top of the dialog
 - [ ] **Matthew**: try both dialogs and a converted Save As in the real window (steps in WORKLOG, 2026-11-04)
 - [ ] **Matthew's say-so first**: Probe has never run from the window on real hardware, only against a stand-in. `--probe` is the same code, tested in Phase 1. Try it on the Realtek before the H2n
-- [ ] Should a Save As that converts leave the sound in the window as it was, saving a copy instead? Mine was to follow 95's Convert Now (asks first). Say if it should be the other way
+- [x] A Save As that converts saves a copy, and the sound in the window stays as it was (Matthew, 2026-11-04). It still asks first, it can't replace the sound's own file, and closing asks about unsaved changes again afterwards
 - [ ] A channel picker (record the H2n's inputs 3 and 4 only): the engine can (`pick`), the dialog only shows the names. Needs the answer to which pair is which, above
 - [ ] Mono from more than two channels through Save As uses `fit_channels` (all of them averaged), where recording Mono mixes channels 1 and 2. On an H2n 4-channel take, that averages its mid-side pair in too. Same open question as the picker
 - [ ] The Recording Device dialog could show the identical-channels warning above

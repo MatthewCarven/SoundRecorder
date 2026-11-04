@@ -567,7 +567,31 @@ the probe itself is Phase 1's `--probe`). To try it:
    Tab, the arrows, the scrollbar, the wheel. Cancel leaves everything alone.
 4. With the 4-channel take open: Output Format, FLAC, 22,050 Hz, Stereo, OK. File >
    Save As: it should say what the file will be and ask. Then check it sounds right,
-   and that the window's length is unchanged.
+   and that the window's name and length are unchanged.
 5. Save As to `test.m4a`, then File > Open it: does it sound right?
 6. Save As to `test.opus` from a 44.1 kHz sound: it should offer 48,000 Hz.
 7. Does the look pass? Both dialogs are my reading of 3.1's File Open.
+
+## 2026-11-04: a Save As that converts saves a copy
+
+Matthew's answer to the call above: **a Save As that converts saves a copy**, so
+95's Convert Now is out. The window's sound, its name, its format and whether it's
+changed all stand, as they do for Save Tracks. `Document.save` went back to the
+plain save, with `save_copy` beside it, and the app's three watch-cursor blocks
+became `_saving`.
+
+Two things followed from it:
+
+- **A copy can't go over the sound's own file**, the same as a track: the window would
+  say one thing and the file another. It says so and asks for another name.
+- **"Save the changes?" comes round again after a copy.** Answering Yes on New, Open
+  or Exit can end in a converted copy, and the window's own sound still isn't saved.
+  Left alone it would carry on and throw that sound away, straight after a box saying
+  it stays. So `_save_changes` asks until the sound is saved or the answer is No or Cancel.
+
+The Output Format summary says "Save As makes a copy at..." instead of "would become".
+It's cut at two lines, so I ran all 6,264 format, encoding, rate and channel
+combinations against a 96 kHz 8-channel sound: none runs over. 356 tests.
+
+**Not tried:** nobody has run this in a real window, me included: windowless tests
+only. The only new thing to see is the message box's wording.

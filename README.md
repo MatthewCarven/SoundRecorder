@@ -41,8 +41,9 @@ until Device > Recording Device picks another, or from `--device` / `--api` (the
 - **File**: New, Open (anything libsndfile reads, and anything else ffmpeg can),
   Save, Save As (the extension picks the format: WAV, FLAC, MP3, Ogg, Opus, AAC
   as .m4a, AIFF...), Revert, Exit. If the format can't hold the sound, or Output
-  Format asks for another rate or channels, Save As says so first, and the sound
-  in the window changes to match the file, as Windows 95's Convert Now did.
+  Format asks for another rate or channels, Save As says so first and saves a
+  converted copy: the sound in the window, its name and any unsaved changes all
+  stay as they were. A copy can't replace the sound's own file.
 - **File > Save Tracks** (ours; a sound of two or more channels): Track 1 to Track
   N each save that one channel as a mono file, and All Tracks saves them all from
   one dialog, as name-1, name-2... They keep the sound's own format and rate if

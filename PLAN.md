@@ -77,8 +77,9 @@ NAudio has no DirectSound capture and would need two separate encoder packages.
   already saved when you press Stop.
 - **Bit depth** is applied on write, with TPDF dither (random noise that hides the
   rounding) when going down to 16 or 8 bits.
-- Save As to a *different* rate or channel layout uses the same converter offline,
-  like the Windows 95 Sound Recorder's "Convert Now".
+- Save As to a *different* rate or channel layout uses the same converter offline
+  and saves a copy: unlike the Windows 95 Sound Recorder's "Convert Now", the sound
+  in the window stays as it was (Matthew, 2026-11-04).
 
 ### Device detection and format probing
 
@@ -209,11 +210,11 @@ channel conversion builds on the same two.
 dialog (API, device, native formats, channel names, probing only on request) and
 the Output Format dialog (format, encoding, quality, rate, channels), both drawn in
 3.1 style on `ui/dialog.py`'s base and `ui/controls.py`'s list box; AAC through
-imageio-ffmpeg; Save As converting rate and channels. Two choices were mine, and
-easy to change: rate and channels live in Output Format, since Windows' own Save
-dialog can't take a Convert button, and a Save As that converts changes the sound
-in the window too, as 95's Convert Now did. A channel picker wasn't built: the
-dialog shows the channels' names. Waits on Matthew's try.
+imageio-ffmpeg; Save As converting rate and channels. Rate and channels live in
+Output Format, since Windows' own Save dialog can't take a Convert button (my
+choice, easy to change). A Save As that converts saves a copy and leaves the sound
+in the window alone (Matthew's choice). A channel picker wasn't built: the dialog
+shows the channels' names. Waits on Matthew's try.
 
 **Phase 6: package.** PyInstaller one-folder or one-file exe with libsndfile,
 PortAudio (ASIO build) and ffmpeg bundled, an icon, settings remembered (last device,

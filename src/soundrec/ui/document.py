@@ -86,32 +86,28 @@ class Document:
         doc.spec = spec
         return doc
 
-    def save(self, path, spec: OutputSpec, rate: int | None = None,
-             channels: int | None = None) -> None:
+    def save(self, path, spec: OutputSpec) -> None:
         """Write the sound to `path`: to a temporary file beside it first, so a
-        failed save can't wreck the file already there. At another rate or
-        channel layout, the sound itself changes to match, as Windows 95's
-        Convert Now did, so the window and its file keep agreeing; the new take
-        goes in only once the file is safe, and a failure leaves things as they
-        were."""
+        failed save can't wreck the file already there."""
         if self.take is None:
             raise ValueError("there's no sound to save")
         path = Path(path)
-        rate, channels = rate or self.rate, channels or self.channels
-        converted = None
-        if (rate, channels) != (self.rate, self.channels):
-            converted = convert(self.take, rate, channels)
-        try:
-            with replacing([path]) as [temporary]:
-                (converted or self.take).save(temporary, spec)
-        except BaseException:
-            if converted is not None:
-                converted.discard()
-            raise
-        if converted is not None:
-            self.take.discard()
-            self.take = converted
+        with replacing([path]) as [temporary]:
+            self.take.save(temporary, spec)
         self.path, self.spec, self.dirty = path, spec, False
+
+    def save_copy(self, path, spec: OutputSpec, rate: int, channels: int) -> None:
+        """Write the sound to `path` at another rate or channel layout. The
+        sound stays as it is: this saves a copy, so its file, its format and
+        whether it's changed all stand."""
+        if self.take is None:
+            raise ValueError("there's no sound to save")
+        converted = convert(self.take, rate, channels)
+        try:
+            with replacing([Path(path)]) as [temporary]:
+                converted.save(temporary, spec)
+        finally:
+            converted.discard()
 
     def save_tracks(self, tracks: dict, spec: OutputSpec, rate: int | None = None) -> None:
         """Write channels of the sound to mono files of their own, {channel:

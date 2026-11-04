@@ -178,8 +178,8 @@ class OutputFormatDialog(Dialog):
                 new_rate = rate_for(target.spec, new_rate)
                 new_channels = channels_for(target.spec, new_channels)
             if (new_rate, new_channels) != (rate, channels):
-                what += (f" This sound, {rate:,} Hz {channels_text([channels])}, would become "
-                         f"{new_rate:,} Hz {channels_text([new_channels])}.")
+                what += (f" Save As makes a copy at {new_rate:,} Hz "
+                         f"{channels_text([new_channels])}; this sound stays as it is.")
         return what
 
     def paint_client(self, s: Surface) -> None:

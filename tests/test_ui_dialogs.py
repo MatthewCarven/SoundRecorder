@@ -304,27 +304,27 @@ def test_mp3_is_called_mp3_on_the_list():
     assert d.formats.rows[format_row(d, "MP3")].startswith("MP3")
 
 
-def test_it_says_when_save_as_would_change_the_sound():
+def test_it_says_when_save_as_would_make_a_copy():
     d = OutputFormatDialog(None, 1, sound=(44100, 2))
-    assert "would become" not in d.summary()
+    assert "a copy" not in d.summary()
     d.formats.select(format_row(d, "OGG"))
     d.changed(d.formats)
     d.encodings.select(d.encoding_keys.index("OPUS"))
     d.changed(d.encodings)
-    assert "This sound, 44,100 Hz stereo, would become 48,000 Hz stereo" in d.summary()
+    assert "a copy at 48,000 Hz stereo; this sound stays as it is" in d.summary()
 
 
 def test_it_says_a_format_will_fold_channels():
     d = OutputFormatDialog(None, 1, sound=(44100, 4))
     d.formats.select(format_row(d, "MP3"))
     d.changed(d.formats)
-    assert "would become 44,100 Hz stereo" in d.summary()
+    assert "a copy at 44,100 Hz stereo" in d.summary()
 
 
 def test_it_says_nothing_of_a_sound_with_no_sound():
     d = OutputFormatDialog(None, 1)
     d.channels.select(1)
-    assert "would become" not in d.summary() and "mono" in d.summary()
+    assert "a copy" not in d.summary() and "mono" in d.summary()
 
 
 def test_it_paints_at_3_1s_frame():

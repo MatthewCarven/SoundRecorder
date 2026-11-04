@@ -748,19 +748,57 @@ def test_save_as_keeps_the_sound_when_nothing_asks_for_a_change(monkeypatch, tmp
     app.doc.close()
 
 
-def test_save_as_asks_before_changing_the_sound_for_a_format(monkeypatch, tmp_path):
-    a = np.zeros((4410, 4), np.float32)
+def test_save_as_asks_before_saving_a_copy_for_a_format(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    a = np.random.default_rng(2).uniform(-0.5, 0.5, (4410, 4)).astype(np.float32)
     app = _app_with_sound(monkeypatch, a, rate=44100)
     app.position = 2205
+    before = (app.doc.take, app.doc.path, app.doc.spec, app.doc.dirty)
     _save_dialog(monkeypatch, tmp_path / "a.mp3", tmp_path / "a.mp3")
     app.answers = ["no"]
     assert not app.cmd_saveas()
-    assert (app.doc.rate, app.doc.channels) == (44100, 4) and not (tmp_path / "a.mp3").exists()
+    assert not (tmp_path / "a.mp3").exists()
     app.answers = ["yes"]
     assert app.cmd_saveas()  # MP3 stops at two channels
-    assert (app.doc.rate, app.doc.channels) == (44100, 2) and (tmp_path / "a.mp3").exists()
-    assert app.position == 2205
+    assert sf.info(str(tmp_path / "a.mp3")).channels == 2
+    assert (app.doc.take, app.doc.path, app.doc.spec, app.doc.dirty) == before
+    assert (app.doc.rate, app.doc.channels, app.doc.frames) == (44100, 4, 4410)
+    assert np.array_equal(app.doc.read(0, 4410), a) and app.position == 2205
     app.doc.close()
+
+
+def test_a_converted_copy_cant_replace_the_sounds_own_file(monkeypatch, tmp_path):
+    import soundfile as sf
+
+    from soundrec.output import Target
+    from soundrec.ui.document import Document
+
+    source = tmp_path / "song.wav"
+    sf.write(str(source), np.zeros((800, 4), np.float32), 8000, "FLOAT")
+    app = _app_with_sound(monkeypatch, np.zeros((10, 2), np.float32))
+    app.doc.close()
+    app.doc = Document.open(source)
+    app.output = Target(channels=2)
+    _save_dialog(monkeypatch, str(source).upper())
+    assert not app.cmd_saveas()
+    assert "the file this sound belongs to" in app.said[0]
+    assert sf.info(str(source)).channels == 4
+    app.doc.close()
+
+
+def test_after_a_copy_the_sound_is_still_unsaved_so_it_asks_again(monkeypatch, tmp_path):
+    a = np.zeros((4410, 4), np.float32)
+    app = _app_with_sound(monkeypatch, a, rate=44100)
+    app.doc.dirty = True
+    take = app.doc.take
+    _save_dialog(monkeypatch, tmp_path / "a.mp3")
+    app.answers = ["yes", "yes", "cancel"]  # save the changes, go on with the copy, then stop
+    app.cmd_new()
+    assert (tmp_path / "a.mp3").exists() and app.doc.take is take and not app.answers
+    app.answers = ["no"]
+    app.cmd_new()
+    assert app.doc.take is None and not app.answers
 
 
 def test_save_as_follows_the_output_format(monkeypatch, tmp_path):
@@ -777,7 +815,7 @@ def test_save_as_follows_the_output_format(monkeypatch, tmp_path):
     assert asked[0]["initialfile"] == "untitled.flac" and asked[0]["filetypes"][0][1] == "*.flac"
     with sf.SoundFile(str(tmp_path / "x.flac")) as f:
         assert (f.subtype, f.samplerate, f.channels) == ("PCM_24", 24000, 1)
-    assert (app.doc.rate, app.doc.channels) == (24000, 1) and app.position == app.doc.frames
+    assert (app.doc.rate, app.doc.channels) == (48000, 2) and app.position == 4800
     app.doc.close()
 
 
