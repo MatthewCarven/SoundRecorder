@@ -27,6 +27,7 @@ from ..takes import default_dir
 from . import face as F
 from .audio import DeviceList, PlaybackError, Player
 from .dialog import MessageBox
+from .dialogs import OutputFormatDialog, RecordingDeviceDialog
 from .document import Document
 from .menus import SEPARATOR, Item, Menu, Tracker, cascade_at, item_at, layout, paint_popup
 from .meter import Meter
@@ -59,8 +60,12 @@ CHANNEL_CHOICES = ("mono", "stereo", "all")
 
 def save_types(suffix: str) -> list:
     """The Save dialogs' file types, the one for `suffix` first, so that the
-    dialog's list agrees with the name it starts with."""
-    return sorted(SAVE_TYPES, key=lambda kind: kind[1] != "*" + suffix.lower())
+    dialog's list agrees with the name it starts with. Rare formats aren't on
+    the list until they're the one wanted."""
+    pattern = "*" + suffix.lower()
+    if all(kind[1] != pattern for kind in SAVE_TYPES):
+        return [(suffix[1:].upper() + " files", pattern), *SAVE_TYPES]
+    return sorted(SAVE_TYPES, key=lambda kind: kind[1] != pattern)
 
 
 def track_items(channels: int) -> list[Item]:
@@ -87,10 +92,9 @@ def same_moment(at: int, before: int, after: int) -> int:
 
 
 def build_menus() -> list[Menu]:
-    """The control menu, then the menu bar's, as in 3.1 plus our Device menu.
-    The Device dialogs come in Phase 5. The Device menu's channel choices are
-    ticked, as 3.1's Clock ticked Analog or Digital, rather than a submenu.
-    Edit and Effects items are enabled by _sync."""
+    """The control menu, then the menu bar's, as in 3.1 plus our Device menu,
+    whose channel choices are ticked, as 3.1's Clock ticked Analog or Digital.
+    What's greyed is up to _sync."""
     return [
         Menu(None, [Item("&Restore", "restore", enabled=False), Item("&Move", "move"),
                     Item("&Size", "size", enabled=False), Item("Mi&nimize", "minimize"),
@@ -148,6 +152,7 @@ class App:
         self.device_problem: str | None = None
         self.channels_wanted: str | None = None  # a CHANNEL_CHOICES pick; None: the device's own
         self.output = Target()     # Device > Output Format's choice
+        self.probes: dict = {}     # the Probe button's answers, by device key
         self._inbox: queue.SimpleQueue = queue.SimpleQueue()
         self.devices = DeviceList(self._inbox.put)
         self._rescan_when_idle = False
@@ -231,6 +236,8 @@ class App:
         for item in effects_menu.items:
             item.enabled = sound
         device_menu.item("refresh").enabled = idle and not self.devices.busy
+        device_menu.item("device").enabled = idle and self.devices.scan is not None
+        device_menu.item("format").enabled = idle
         # The channels are a new sound's: once there's a sound, recordings take its.
         available = self.device.channels if self.device is not None else 2
         choice = self.channel_choice
@@ -835,6 +842,51 @@ class App:
 
     def cmd_channels_all(self) -> None:
         self._pick_channels("all")
+
+    def _show(self, dialog) -> str:
+        self.tracker.close()
+        self.redraw()
+        self.root.update_idletasks()
+        r = self.root
+        return dialog.run((r.winfo_rootx(), r.winfo_rooty(), r.winfo_width(), r.winfo_height()))
+
+    def cmd_format(self) -> None:
+        self.stop()
+        doc = self.doc
+        dialog = OutputFormatDialog(self.root, self.zoom, self.output,
+                                    (doc.rate, doc.channels) if doc.take else None)
+        if self._show(dialog) == "ok":
+            self.output = dialog.result
+
+    def cmd_device(self) -> None:
+        self.stop()
+        if self.devices.scan is None:
+            self.message(self.device_problem or "Still looking for devices: try again in a moment.",
+                         kind="warning")
+            return
+        dialog = RecordingDeviceDialog(self.root, self.zoom, self.devices.scan, self.device,
+                                       self.probes, self._probe)
+        if self._show(dialog) == "ok" and dialog.device is not None:
+            # The latest scan's copy: a rescan while the dialog was up (a plug
+            # going in) renumbers the devices, and may have taken this one away.
+            key = dialog.device.key
+            device = next((d for d in self.devices.scan.inputs if d.key == key), None)
+            if device is None:
+                self.message(f"{dialog.device.name} has gone: it's no longer on the list.",
+                             kind="warning")
+            else:
+                self.device, self.device_problem = device, None
+                self.wanted = (device.name, device.api)  # a rescan keeps to it
+        self._sync()
+        self.redraw()
+
+    def _probe(self, device, done) -> bool:
+        def finished(answer, error):
+            done(answer, error)
+            self._sync()
+            self.redraw()
+
+        return self.devices.probe(device, finished)
 
     def _refreshed(self) -> None:
         """Refresh Devices asked for it, so say what was found."""

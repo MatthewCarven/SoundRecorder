@@ -346,3 +346,49 @@ def test_a_track_can_go_to_a_rate_the_format_can_hold(tmp_path):
     assert (info.samplerate, info.channels) == (48000, 1)
     assert doc.rate == 44100 and doc.channels == 2
     doc.close()
+
+
+def test_a_probe_runs_on_the_scan_thread_and_reports_back(monkeypatch):
+    import soundrec.probe as probe_module
+
+    inbox = []
+    devices = DeviceList(inbox.append)
+    threads = []
+
+    def fake(device):
+        threads.append(threading.current_thread())
+        return "the answer"
+
+    monkeypatch.setattr(probe_module, "probe", fake)
+    answers = []
+    assert devices.probe("a device", lambda answer, error: answers.append((answer, error)))
+    assert devices.busy and not devices.probe("again", None)  # one job at a time
+    for _ in range(500):
+        if inbox:
+            break
+        threading.Event().wait(0.01)
+    inbox.pop()()
+    assert answers == [("the answer", None)] and not devices.busy
+    assert threads[0].name == "Device scans"
+    devices.stop()
+
+
+def test_a_failed_probe_comes_back_as_its_error(monkeypatch):
+    import soundrec.probe as probe_module
+
+    inbox = []
+    devices = DeviceList(inbox.append)
+
+    def fake(device):
+        raise OSError("no such driver")
+
+    monkeypatch.setattr(probe_module, "probe", fake)
+    answers = []
+    devices.probe("a device", lambda answer, error: answers.append((answer, str(error))))
+    for _ in range(500):
+        if inbox:
+            break
+        threading.Event().wait(0.01)
+    inbox.pop()()
+    assert answers == [(None, "no such driver")]
+    devices.stop()

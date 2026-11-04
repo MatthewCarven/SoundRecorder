@@ -23,6 +23,7 @@ import os
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -156,7 +157,8 @@ def extension(spec: OutputSpec) -> str:
 def format_names() -> dict[str, str]:
     """Every format there is, by name, with its description: libsndfile's, as
     it reports them at run time, and ours."""
-    return {**sf.available_formats(), "M4A": "M4A (AAC, through ffmpeg)"}
+    return {**sf.available_formats(), "MP3": "MP3 (MPEG-1/2 Audio)",
+            "M4A": "M4A (AAC, through ffmpeg)"}
 
 
 def subtype_names(fmt: str) -> dict[str, str]:
@@ -168,6 +170,7 @@ def subtype_names(fmt: str) -> dict[str, str]:
             if _writes(OutputSpec(fmt, name))}
 
 
+@lru_cache
 def _writes(spec: OutputSpec) -> bool:
     try:
         preflight(spec, rate_for(spec, 44100), 1)

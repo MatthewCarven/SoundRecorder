@@ -45,6 +45,28 @@ class DeviceList:
         self._jobs.put((rescan, then))
         return True
 
+    def probe(self, device, then) -> bool:
+        """Ask a device what it takes, on the scanning thread, since that's
+        where PortAudio lives. then(answer, error) runs on the UI thread.
+        False if a scan is running. Only ever on request: see dialogs.py."""
+        if self.busy:
+            return False
+        self.busy = True
+        self._jobs.put((device, then))
+        return True
+
+    def _probe(self, device, then) -> None:
+        try:
+            from ..probe import probe
+            answer, error = probe(device), None
+        except BaseException as e:  # shown to the user, not raised
+            answer, error = None, e
+        self._notify(lambda a=answer, e=error: self._probed(a, e, then))
+
+    def _probed(self, answer, error, then) -> None:
+        self.busy = False
+        then(answer, error)
+
     def stop(self) -> None:
         self._jobs.put(None)
 
@@ -54,6 +76,9 @@ class DeviceList:
                 job = self._jobs.get()
                 if job is None:
                     return
+                if not isinstance(job[0], bool):
+                    self._probe(*job)
+                    continue
                 rescan, then = job
                 try:
                     from ..devices import scan

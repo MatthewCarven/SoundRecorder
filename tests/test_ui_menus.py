@@ -429,7 +429,7 @@ def _app_without_a_window(device_channels):
     app.menus = build_menus()
     app.face = F.FaceState(menus=tuple(m.title for m in app.menus[1:]))
     app.doc, app.position, app.recorder, app.player = Document(), 0, None, None
-    app.devices = types.SimpleNamespace(busy=False)
+    app.devices = types.SimpleNamespace(busy=False, scan=None)
     app.device = types.SimpleNamespace(channels=device_channels) if device_channels else None
     app.meter, app.channels_wanted, app.output = Meter(), None, Target()
     return app
@@ -792,6 +792,175 @@ def test_a_name_with_another_extension_beats_the_output_format(monkeypatch, tmp_
     assert app.cmd_saveas()
     assert sf.info(str(tmp_path / "x.wav")).subtype == "PCM_16"
     app.doc.close()
+
+
+def test_rare_formats_get_a_type_in_the_save_dialog():
+    from soundrec.ui.app import save_types
+
+    assert save_types(".flac")[0][1] == "*.flac"
+    assert save_types(".voc")[0] == ("VOC files", "*.voc")
+
+
+# -- the Device dialogs from the menu ---------------------------------------------------------
+
+def _fake_scan():
+    import types
+
+    from soundrec.devices import Device
+
+    a = Device("WASAPI", "Mic", 2, 48000, 1, None, True)
+    b = Device("WASAPI", "Other", 4, 44100, 2)
+    return types.SimpleNamespace(inputs=[a, b], outputs=[], endpoints=[])
+
+
+def _with_dialogs(monkeypatch, answers):
+    """An app whose dialogs run with no window; answers(dialog) says what happens."""
+    app = _app_with_sound(monkeypatch, np.zeros((800, 2), np.float32))
+    app.root, app.zoom, app.probes = None, 1, {}
+    app.devices.probe = lambda device, then: True
+
+    def show(dialog):
+        return answers(dialog)
+
+    monkeypatch.setattr(app, "_show", show, raising=False)
+    return app
+
+
+def test_the_device_dialogs_are_greyed_while_busy(monkeypatch):
+    import types
+
+    app = _app_with_sound(monkeypatch, np.zeros((800, 2), np.float32))
+    device = app.menus[4]
+    app._sync()
+    assert device.item("format").enabled and not device.item("device").enabled  # no scan yet
+    app.devices.scan = _fake_scan()
+    app._sync()
+    assert device.item("device").enabled
+    app.player = types.SimpleNamespace(position=0)
+    app._sync()
+    assert not device.item("device").enabled and not device.item("format").enabled
+    app.player = None
+    app.doc.close()
+
+
+def test_output_format_keeps_the_choice_on_ok_only(monkeypatch):
+    from soundrec.output import Target
+
+    def cancel(dialog):
+        dialog.formats.select(2)
+        dialog.changed(dialog.formats)
+        return "cancel"
+
+    app = _with_dialogs(monkeypatch, cancel)
+    app.cmd_format()
+    assert app.output == Target()
+    monkeypatch.setattr(app, "_show", lambda dialog: (cancel(dialog), "ok")[1], raising=False)
+    app.cmd_format()
+    assert app.output.spec.format == "FLAC"
+    app.doc.close()
+
+
+def test_output_format_tells_the_dialog_about_the_sound(monkeypatch):
+    seen = []
+    app = _with_dialogs(monkeypatch, lambda dialog: seen.append(dialog.sound) or "cancel")
+    app.cmd_format()
+    assert seen == [(8000, 2)]
+    app.doc.close()
+
+
+def test_recording_device_changes_the_device_on_ok(monkeypatch):
+    def pick_other(dialog):
+        dialog.device_list.select(1)
+        dialog.changed(dialog.device_list)
+        return "ok"
+
+    app = _with_dialogs(monkeypatch, pick_other)
+    app.devices.scan = _fake_scan()
+    app.device = app.devices.scan.inputs[0]
+    app.cmd_device()
+    assert app.device.name == "Other" and app.wanted == ("Other", "WASAPI")
+    assert app.menus[4].item("channels-all").label == "&All 4 Channels"
+    app.doc.close()
+
+
+def test_recording_device_cancel_leaves_it(monkeypatch):
+    app = _with_dialogs(monkeypatch, lambda dialog: "cancel")
+    app.devices.scan = _fake_scan()
+    first = app.device = app.devices.scan.inputs[0]
+    app.wanted = (None, None)
+    app.cmd_device()
+    assert app.device is first and app.wanted == (None, None)
+    app.doc.close()
+
+
+def test_a_rescan_during_the_dialog_gives_the_latest_devices_copy(monkeypatch):
+    import dataclasses
+
+    def replug(dialog):
+        dialog.device_list.select(1)
+        dialog.changed(dialog.device_list)
+        scan = app.devices.scan
+        scan.inputs = [dataclasses.replace(d, index=d.index + 10) for d in scan.inputs]
+        return "ok"
+
+    app = _with_dialogs(monkeypatch, replug)
+    app.device = None
+    app.devices.scan = _fake_scan()
+    app.cmd_device()
+    assert app.device.name == "Other" and app.device.index == 12  # a stale index won't open
+    app.doc.close()
+
+
+def test_a_device_unplugged_during_the_dialog_is_reported(monkeypatch):
+    def unplug(dialog):
+        dialog.device_list.select(1)
+        dialog.changed(dialog.device_list)
+        app.devices.scan.inputs = app.devices.scan.inputs[:1]
+        return "ok"
+
+    app = _with_dialogs(monkeypatch, unplug)
+    app.devices.scan = _fake_scan()
+    app.device = app.devices.scan.inputs[0]
+    app.cmd_device()
+    assert app.device.name == "Mic" and "has gone" in app.said[0]
+    app.doc.close()
+
+
+def test_recording_device_says_so_before_the_first_scan(monkeypatch):
+    app = _with_dialogs(monkeypatch, lambda dialog: "ok")
+    app.device_problem = None
+    app.cmd_device()
+    assert "Still looking" in app.said[0]
+    app.doc.close()
+
+
+def test_a_new_sound_records_at_the_output_formats_rate(monkeypatch):
+    import sys
+    import types
+
+    from soundrec.output import Target
+
+    made = []
+
+    class Recorder:
+        def __init__(self, source, rate, channels, pick, meta):
+            made.append(rate)
+
+        def start(self):
+            pass
+
+    capture = types.SimpleNamespace(CaptureError=RuntimeError, open_capture=lambda *a: None)
+    monkeypatch.setitem(sys.modules, "soundrec.capture", capture)
+    monkeypatch.setitem(sys.modules, "soundrec.engine", types.SimpleNamespace(Recorder=Recorder))
+    app = _app_without_a_window(2)
+    monkeypatch.setattr(app, "redraw", lambda: None, raising=False)
+    app.device = types.SimpleNamespace(channels=2, api="MME", endpoint=None, default_rate=48000,
+                                       key="x", name="x")
+    app.meter.reset = lambda: None
+    app.output = Target(rate=22050)
+    app._sync = lambda: None
+    app.start_recording()
+    assert made == [22050]
 
 
 def test_edit_and_effects_are_greyed_without_a_sound(monkeypatch):
