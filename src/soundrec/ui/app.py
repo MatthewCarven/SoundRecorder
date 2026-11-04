@@ -68,6 +68,11 @@ def save_types(suffix: str) -> list:
     return sorted(SAVE_TYPES, key=lambda kind: kind[1] != pattern)
 
 
+def echo_items() -> list[Item]:
+    """The Add Echo cascade: how long after the sound its repeat comes."""
+    return [Item(f"{ms} ms", f"echo-{ms}") for ms in edits.ECHO_DELAYS_MS]
+
+
 def track_items(channels: int) -> list[Item]:
     """The Save Tracks cascade: every channel, then all of them at once. The
     first nine tracks have their digit as a mnemonic."""
@@ -113,7 +118,8 @@ def build_menus() -> list[Menu]:
                           Item("&Decrease Volume", "quieter"), SEPARATOR,
                           Item("Increase &Speed (by 100%)", "faster"),
                           Item("Decrease S&peed", "slower"), SEPARATOR,
-                          Item("&Add Echo", "echo"), Item("&Reverse", "reverse")]),
+                          Item("&Add Echo", "echo", submenu=Menu(None, echo_items())),
+                          Item("&Reverse", "reverse")]),
         Menu("&Device", [Item("&Recording Device...", "device", enabled=False),
                          Item("&Output Format...", "format", enabled=False), SEPARATOR,
                          Item("&Mono", "channels-mono"), Item("&Stereo", "channels-stereo"),
@@ -522,6 +528,9 @@ class App:
         if name.startswith("track-"):  # one for each channel of the sound
             self.save_track(int(name.removeprefix("track-")) - 1)
             return
+        if name.startswith("echo-"):  # one for each delay
+            self.add_echo(int(name.removeprefix("echo-")))
+            return
         handler = getattr(self, "cmd_" + name.replace("-", "_"), None)
         if handler is not None:
             handler()
@@ -810,8 +819,9 @@ class App:
     def cmd_slower(self) -> None:
         self._edit(lambda take: edits.speed(take, 1 / edits.SPEED_STEP), same_moment)
 
-    def cmd_echo(self) -> None:
-        self._edit(edits.echo)
+    def add_echo(self, milliseconds: int) -> None:
+        """Effects > Add Echo > n ms."""
+        self._edit(lambda take: edits.echo(take, milliseconds / 1000))
 
     def cmd_reverse(self) -> None:
         self._edit(edits.reverse)

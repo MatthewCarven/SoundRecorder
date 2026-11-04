@@ -595,3 +595,22 @@ combinations against a 96 kHz 8-channel sound: none runs over. 356 tests.
 
 **Not tried:** nobody has run this in a real window, me included: windowless tests
 only. The only new thing to see is the message box's wording.
+
+## 2026-11-04: Add Echo's delays
+
+Matthew on the echo: from memory it's a close match, and the only way to be sure
+would be debugging or measuring the original 3.1, **which he doesn't want done**. So
+that question's closed. He suggested a submenu of delays instead, and the cascades
+built for Save Tracks made that small: Effects > Add Echo now opens 50 ms to 500 ms in
+steps of 50 (`ECHO_DELAYS_MS`), still one repeat at half the level, length unchanged.
+250 ms is the one he's already heard.
+
+The delays have no mnemonics: 50, 150, 250, 350 and 450 share their digits, so the
+arrows and Enter choose. The list and the steps were my reading of his "etc".
+
+359 tests, and the invisible real window (fake device table, no audio): hovering Add
+Echo, level with its parent and on the screen, then clicking 100 ms gave one repeat
+4,410 frames later at half the level, to 2e-7. 39 of 39 window checks, with Save
+Tracks' 30 still passing.
+
+**Not tried:** by Matthew, how any of the delays sound.

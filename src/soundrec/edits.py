@@ -27,8 +27,9 @@ from .takes import Take
 BLOCK = 1 << 16
 VOLUME_STEP = 1.25    # Increase Volume (by 25%); Decrease divides by it, so each undoes the other
 SPEED_STEP = 2        # Increase Speed (by 100%) halves the length; Decrease doubles it
-ECHO_SECONDS = 0.25   # one repeat, this much later,
-ECHO_LEVEL = 0.5      # at half the level (-6 dB); 3.1's own figures aren't known
+ECHO_DELAYS_MS = tuple(range(50, 501, 50))  # Add Echo's choices: one repeat, this much later,
+ECHO_LEVEL = 0.5      # at half the level (-6 dB). 3.1's own figures aren't known; at 250 ms,
+                      # Matthew calls it a close match from memory (2026-11-04)
 
 
 def _build(rate: int, channels: int, blocks, edit: str) -> Take:
@@ -130,7 +131,7 @@ def speed(take: Take, factor: float) -> Take:
     return _build(take.rate, take.channels, resampled(), "speed")
 
 
-def echo(take: Take, seconds: float = ECHO_SECONDS, level: float = ECHO_LEVEL) -> Take:
+def echo(take: Take, seconds: float, level: float = ECHO_LEVEL) -> Take:
     """One repeat of the sound, `seconds` later at `level`; the length stays."""
     delay = max(round(seconds * take.rate), 1)
 

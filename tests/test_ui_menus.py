@@ -832,6 +832,45 @@ def test_a_name_with_another_extension_beats_the_output_format(monkeypatch, tmp_
     app.doc.close()
 
 
+# -- Effects > Add Echo -----------------------------------------------------------------------
+
+def test_add_echo_offers_its_delays(monkeypatch):
+    app = _app_with_sound(monkeypatch, np.zeros((800, 2), np.float32))
+    app._sync()
+    item = app.menus[3].item("echo")
+    assert item.enabled
+    assert [(i.label, i.command) for i in item.submenu.items] == [
+        (f"{ms} ms", f"echo-{ms}") for ms in (50, 100, 150, 200, 250, 300, 350, 400, 450, 500)]
+    app.doc.close()
+
+
+def test_add_echo_is_greyed_with_no_sound():
+    app = _app_without_a_window(2)
+    app._sync()
+    assert not app.menus[3].item("echo").enabled
+
+
+def test_the_delay_chosen_is_the_delay_of_the_echo(monkeypatch):
+    a = np.zeros((4000, 2), np.float32)
+    a[100] = [1.0, -1.0]
+    app = _app_with_sound(monkeypatch, a)
+    app._sync()
+    app.position = 1234
+    t = Tracker(app.menus)
+    t.alt_key("s")
+    t.key("a", "a")
+    t.key("Down")
+    command = t.key("Return")[1]
+    assert command == "echo-100"
+    app.command(command)
+    out = app.doc.read(0, 4000).copy()
+    assert np.allclose(out[100], [1.0, -1.0])
+    assert np.allclose(out[900], [0.5, -0.5])  # 100 ms at 8000 Hz
+    out[100] = out[900] = 0
+    assert not out.any() and app.doc.dirty and app.position == 1234
+    app.doc.close()
+
+
 def test_rare_formats_get_a_type_in_the_save_dialog():
     from soundrec.ui.app import save_types
 

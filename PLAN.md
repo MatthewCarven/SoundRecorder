@@ -153,7 +153,7 @@ NAudio has no DirectSound capture and would need two separate encoder packages.
   - Edit: Insert File..., Mix with File..., Delete Before Current Position, Delete
     After Current Position
   - Effects: Increase Volume (by 25%), Decrease Volume, Increase Speed (by 100%),
-    Decrease Speed, Add Echo, Reverse
+    Decrease Speed, Add Echo (ours: a submenu, 50 ms to 500 ms), Reverse
   - Device (ours): Recording Device..., Output Format..., Refresh Devices
   - Help: About Sound Recorder...
 - A level meter while recording, in keeping with the look (a green bar inside the
@@ -195,7 +195,8 @@ mixed files are converted to the document's format first. Tests for each effect.
 **Built 2026-11-03** (`edits.py`): each command writes a new take block by block
 and the document swaps it in, so a failure leaves the sound as it was. Decrease
 Volume divides by 1.25, so it undoes Increase; speed is a soxr resample; the echo
-(0.25 s, -6 dB, one repeat) is our guess at 3.1's. Deletes ask first. Also brought
+(0.25 s, -6 dB, one repeat) was our guess at 3.1's, which Matthew calls a close
+match from memory, and it's now 50 to 500 ms from a submenu. Deletes ask first. Also brought
 forward from Phase 5 at Matthew's ask: Mono / Stereo / All Channels in the Device
 menu, and playback mixing extra channels into stereo. Waits on Matthew's try.
 

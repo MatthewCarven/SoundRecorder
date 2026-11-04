@@ -58,8 +58,9 @@ until Device > Recording Device picks another, or from `--device` / `--api` (the
 - **Effects**: Increase Volume by 25% and Decrease Volume (each undoes the
   other: the working copy is float, so nothing clips until it's saved to a
   format that can't go past full scale), Increase Speed by 100% and Decrease
-  Speed (pitch too, as in 3.1; resampled, so no aliasing), Add Echo (one repeat,
-  0.25 s later at half the level), Reverse. Undo is 3.1's: Revert.
+  Speed (pitch too, as in 3.1; resampled, so no aliasing), Add Echo (one repeat at
+  half the level, 50 to 500 ms later, picked from a submenu), Reverse. Undo is
+  3.1's: Revert.
 - **Device > Recording Device**: every API and device, greyed for jacks with
   nothing plugged in. Choosing one asks it nothing: what's shown comes from the scan.
   **Probe** asks the device for its native formats (and an ASIO driver for its

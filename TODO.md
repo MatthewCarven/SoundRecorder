@@ -101,10 +101,11 @@ See PLAN.md for the why.
 
 ## Phase 4: Edit and Effects (built 2026-11-03)
 - [x] Insert File, Mix with File (converted to the sound's rate and channels: `fit_channels`, then soxr; into no sound, the file becomes it, Untitled), Delete Before / After Current Position (they ask first)
-- [x] Volume +25% / back (x1.25, /1.25: each undoes the other; float working copy, clipped only on save), Speed x2 / /2 (soxr resample, pitch and all, position follows the sound), Add Echo (one repeat, 0.25 s, -6 dB; 3.1's figures unknown), Reverse
+- [x] Volume +25% / back (x1.25, /1.25: each undoes the other; float working copy, clipped only on save), Speed x2 / /2 (soxr resample, pitch and all, position follows the sound), Add Echo (one repeat, -6 dB, 50 to 500 ms from a submenu; 3.1's figures unknown), Reverse
 - [x] Each edit writes a new take and swaps it in, so a failure leaves the sound alone; the old take is deleted. Undo is Revert, as in 3.1
 - [x] Tests: every edit across block edges, the window's commands without a window (227 in all)
-- [ ] **Matthew**: try each of them in the window (2026-11-03: "seems to work well", Edit and Effects not yet confirmed one by one). Does the echo sound like 3.1's? (delay and level are guesses: `ECHO_SECONDS`, `ECHO_LEVEL` in `edits.py`)
+- [x] Does the echo sound like 3.1's? Matthew, 2026-11-04: from memory, a close match at 250 ms and -6 dB. Only taking the original apart would settle it, and he doesn't want that done, so leave it. It became a submenu of delays instead (`ECHO_DELAYS_MS`, `ECHO_LEVEL` in `edits.py`)
+- [ ] **Matthew**: try each of them in the window (2026-11-03: "seems to work well", Edit and Effects not yet confirmed one by one)
 - [ ] Edits run on the UI thread with an hourglass: seconds for an hour of stereo. A thread and a progress display if long sounds make that annoying
 - [ ] Mix sums with no gain change, so two loud sounds go over full scale (kept in the working copy; clipped on save to PCM). Decrease Volume first if that happens
 
